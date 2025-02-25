@@ -1,0 +1,429 @@
+#
+# Copyright (c) 2024-2025 Brill Power.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+import json
+import queue
+import struct
+import threading
+from typing import Any, Callable, List, Tuple, Union
+
+import can
+import cbor2
+import isotp
+
+from .backend import ThingSetBackend
+from .client import ThingSetClient
+from .id import ThingSetID
+from .response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+
+
+class CAN(ThingSetBackend):
+    def __init__(self, bus: str, interface: str = "socketcan", fd=True):
+        super().__init__()
+
+        self.bus = bus
+        self.interface = interface
+        self.fd = fd
+
+        self._can = None
+        self._rx_filters = []
+
+    @property
+    def bus(self) -> str:
+        return self._bus
+
+    @bus.setter
+    def bus(self, _bus: str) -> None:
+        self._bus = _bus
+
+    @property
+    def interface(self) -> str:
+        return self._interface
+
+    @interface.setter
+    def interface(self, _interface: str) -> None:
+        self._interface = _interface
+
+    @property
+    def fd(self) -> bool:
+        return self._fd
+
+    @fd.setter
+    def fd(self, _fd: bool) -> None:
+        self._fd = _fd
+
+    def attach_rx_filter(self, id: int, mask: int, callback: Callable) -> None:
+        self._rx_filters.append({'id': id, 'mask': mask, 'callback': callback})
+
+    def remove_rx_filter(self, id: int) -> None:
+        for i, f in enumerate(self._rx_filters):
+            if f['id'] == id:
+                self._rx_filters.pop(i)
+
+    def remove_all_rx_filters(self) -> None:
+        self._rx_filters = []
+
+    def _handle_message(self, message: can.Message) -> None:
+        for f in self._rx_filters:
+            if message.arbitration_id & f['mask'] == f['id'] & f['mask']:
+                f['callback'](message)
+
+    def connect(self) -> None:
+        if not self._can:
+            self._can = can.Bus(channel=self.bus, interface=self.interface, fd=self.fd)
+            self.is_connected = True
+            self.start_receiving()
+
+    def disconnect(self) -> None:
+        if self._can:
+            self.stop_receiving()
+            self._can.shutdown()
+            self.is_connected = False
+
+    def receive(self) -> can.Message:
+        return self._can.recv(timeout=0.1)
+
+    def send(self, message: can.Message) -> None:
+        return self._can.send(message)
+
+
+class ISOTP(ThingSetBackend):
+    def __init__(self, bus: str, rx_id: int, tx_id: int, fd: bool = True):
+        super().__init__()
+
+        self.bus = bus
+        self.rx_id = rx_id
+        self.tx_id = tx_id
+
+        self._address = None
+        self._sock = isotp.socket(timeout=0.1)
+        self._queue = queue.Queue()
+        self._send_recurse_ctr = 0
+
+        if fd:
+            self._sock.set_ll_opts(mtu=isotp.socket.LinkLayerProtocol.CAN_FD, tx_dl=64)
+
+        self.set_address()
+        self.connect()
+
+    @property
+    def bus(self) -> str:
+        return self._bus
+
+    @bus.setter
+    def bus(self, _bus: str) -> None:
+        self._bus = _bus
+
+    @property
+    def rx_id(self) -> int:
+        return self._rx_id
+
+    @rx_id.setter
+    def rx_id(self, _id: int) -> None:
+        self._rx_id = _id
+
+    @property
+    def tx_id(self) -> int:
+        return self._tx_id
+
+    @tx_id.setter
+    def tx_id(self, _id: int) -> None:
+        self._tx_id = _id
+
+    def set_address(self) -> None:
+        self._address = isotp.Address(addressing_mode=isotp.AddressingMode.Normal_29bits,
+                                      rxid=self.rx_id, txid=self.tx_id)
+
+    def get_message(self, timeout: float) -> Union[bytes, None]:
+        message = None
+
+        try:
+            message = self._queue.get(timeout=timeout)
+        except queue.Empty:
+            pass
+        finally:
+            if message is not None:
+                self._queue.task_done()
+            self.disconnect()
+            return message
+
+    def _handle_message(self, message):
+        self._queue.put(message)
+
+    def connect(self) -> None:
+        self._sock.bind(self.bus, self._address)
+        self.is_connected = True
+        self.start_receiving()
+
+    def disconnect(self) -> None:
+        self.stop_receiving()
+        self._sock.close()
+        self.is_connected = False
+
+    def send(self, _data: bytes) -> None:
+        """ We have recursive calls to self.send here as we can't easily tell when the CAN
+        device is busy from another program (which is entirely possible)
+
+        So we just retry up to 10 times - with a timeout of 100ms this equates to 1 second
+
+        The resultant call to ThingSetCAN.get/update/fetch/exec will just return a None response
+        if the retry limit is exceeded so can be handled easily at the application layer
+        """
+
+        try:
+            _send = self._sock.send(_data)
+            self._send_recurse_ctr = 0
+            return _send
+        except TimeoutError:
+            self._send_recurse_ctr += 1
+            if self._send_recurse_ctr >= 10:
+                self._send_recurse_ctr = 0
+                print(f"ISOTP transmission retry limit exceeded")
+                return None
+
+            self.send(_data)
+
+    def receive(self) -> bytes:
+        try:
+            return self._sock.recv()
+        except TimeoutError:
+            return None
+
+
+class ThingSetCAN(ThingSetClient):
+    ADDR_CLAIM_TIMEOUT_MS: int = 500
+    CONNECT_TIMEOUT_MS:    int = 10000
+
+    EUI: list = [0xDE, 0xAD, 0xBE, 0xEF, 0xC0, 0xFF, 0xEE, 0xEE]
+
+    def __init__(self, bus: str, addr: int = 0x00, source_bus: int=0x00, target_bus: int=0x00):
+        self.bus = bus
+        self.node_addr = None
+        self.source_bus = source_bus
+        self.target_bus = target_bus
+
+        self._addr_claim_timer = None
+        self._taken_node_addrs = []
+
+        self._can = CAN(self.bus)
+        self._can.connect()
+
+        self._negotiate_address(addr)
+
+    def disconnect(self) -> None:
+        self._can.disconnect()
+
+        if self._addr_claim_timer is not None:
+            self._addr_claim_timer.cancel()
+
+        self._can.remove_all_rx_filters()
+
+    # Request:
+    # 05                                      # FETCH
+    #    F6                                   # inexplicable null
+    #    02                                   # CBOR uint: 0x02 (parent ID)
+    #    82                                   # CBOR array (2 elements)
+    #       18 40                             # CBOR uint: 0x40 (object ID)
+    #       18 41                             # CBOR uint: 0x41 (object ID)
+    def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None, get_paths: bool=True) -> ThingSetResponse:
+        req_id, resp_id = self._get_isotp_ids(node_id)
+
+        req = bytearray()
+        req.append(ThingSetRequest.FETCH)
+        req += cbor2.dumps(parent_id, canonical=True)
+        if (len(ids) == 0):
+            req.append(0xF6) # null
+        else:
+            req += cbor2.dumps(ids, canonical=True)
+
+        i = ISOTP(self.bus, resp_id.id, req_id.id)
+        i.send(req)
+        msg = i.get_message(1.0)
+
+        tmp = ThingSetResponse(ThingSetBackend.CAN, msg)
+
+        values = []
+
+        if tmp.status_code is not None:
+            if tmp.status_code <= ThingSetStatus.CONTENT:
+                """ create ThingSetValue for parent_id if we're getting its children, otherwise
+                create ThingSetValue for each id in ids
+                """
+                if len(ids) == 0:
+                    values.append(self._create_value(node_id, parent_id, tmp.data, get_paths))
+                else:
+
+                    for idx, id in enumerate(ids):
+                        values.append(self._create_value(node_id, id, tmp.data[idx], get_paths))
+
+        return ThingSetResponse(ThingSetBackend.CAN, msg, values)
+
+    def get(self, node_id: int, value_id: int, get_paths: bool=True) -> ThingSetResponse:
+        req_id, resp_id = self._get_isotp_ids(node_id)
+
+        payload = bytes([ThingSetRequest.GET] + list(cbor2.dumps(value_id)))
+
+        i = ISOTP(self.bus, resp_id.id, req_id.id)
+        i.send(payload)
+        msg = i.get_message(1.0)
+
+        tmp = ThingSetResponse(ThingSetBackend.CAN, msg)
+
+        values = []
+
+        if tmp.status_code is not None:
+            if tmp.status_code <= ThingSetStatus.CONTENT:
+                values.append(self._create_value(node_id, value_id, tmp.data, get_paths))
+
+        return ThingSetResponse(ThingSetBackend.CAN, msg, values)
+
+    def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
+        req_id, resp_id = self._get_isotp_ids(node_id)
+
+        p_args = list()
+
+        for a in args:
+            if isinstance(a, float):
+                p_args.append(self._to_f32(a))
+            elif isinstance(a, str):
+                if "true" == a.lower() or "false" == a.lower():
+                    p_args.append(json.loads(a.lower()))
+                else:
+                    p_args.append(a)
+            else:
+                p_args.append(a)
+
+        payload = bytes([ThingSetRequest.EXEC] + list(cbor2.dumps(value_id)) + list(cbor2.dumps(p_args, canonical=True)))
+
+        i = ISOTP(self.bus, resp_id.id, req_id.id)
+        i.send(payload)
+        msg = i.get_message(1.0)
+
+        return ThingSetResponse(ThingSetBackend.CAN, msg)
+
+    def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
+        req_id, resp_id = self._get_isotp_ids(node_id)
+
+        if isinstance(value, float):
+            value = self._to_f32(value)
+        if isinstance(value, str):
+            if "true" == value.lower() or "false" == value.lower():
+                value = json.loads(value.lower())
+
+        payload = bytes([ThingSetRequest.UPDATE] + list(cbor2.dumps(parent_id)) + list(cbor2.dumps({value_id:value}, canonical=True)))
+
+        i = ISOTP(self.bus, resp_id.id, req_id.id)
+        i.send(payload)
+        msg = i.get_message(1.0)
+
+        return ThingSetResponse(ThingSetBackend.CAN, msg)
+
+    def _to_f32(self, value: float) -> float:
+        """ In Python, all floats are actually doubles. This does not map well to embedded targets where
+        there is a clear distinction between the two.
+
+        This function forces the provided floating point argument, value, to its closest 32-bit
+        representation so that the resultant encoded (CBOR) value is actually a float (not a double)
+        and can be properly parsed by ThingSet running on an embedded target when expecting a float
+        """
+        return struct.unpack('f', struct.pack('f', value))[0]
+
+    def _create_value(self, node_id: int, value_id: int, value: Any, get_paths: bool=True) -> ThingSetValue:
+        path = None
+
+        if get_paths:
+            path = self._get_path(node_id, value_id)
+
+        return ThingSetValue(value_id, value, path)
+
+    def _get_path(self, node_id: int, value_id: int) -> str:
+        if value_id == ThingSetValue.ID_ROOT:
+            return "Root"
+
+        req_id, resp_id = self._get_isotp_ids(node_id)
+
+        payload = bytearray([ThingSetRequest.FETCH, 0x17])
+        payload.extend(cbor2.dumps([value_id]))
+
+        i = ISOTP(self.bus, resp_id.id, req_id.id)
+        i.send(payload)
+
+        return ThingSetResponse(ThingSetBackend.CAN, i.get_message(1.0)).data[0]
+
+    def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID]:
+        return (
+            ThingSetID.generate_req_resp_id(self.node_addr, node_id, self.source_bus, self.target_bus),
+            ThingSetID.generate_req_resp_id(node_id, self.node_addr, self.source_bus, self.target_bus)
+        )
+
+    def _negotiate_address(self, desired_addr: int, timeout=5000) -> None:
+        self.is_connected = False
+
+        claim_id = ThingSetID.generate_claim_id(desired_addr, 0x00, 0x00)
+        disco_id = ThingSetID.generate_discovery_id(desired_addr)
+
+        print(f"Attempting to claim node address 0x{desired_addr:02X}")
+
+        self._can.attach_rx_filter(claim_id.id, ThingSetID.ADDR_CLAIM_MASK, self._address_claim_handler)
+        self._can.send(can.Message(arbitration_id=disco_id.id, is_fd=self._can.fd))
+        self._addr_claim_timer = threading.Timer(0.5, self._address_claim_complete, args=(disco_id.target_addr,))
+        self._addr_claim_timer.start()
+
+    def _address_claim_handler(self, message: can.Message) -> None:
+        if not self.is_connected:
+            taken_addr = ThingSetID.get_source_addr_from_id(message.arbitration_id)
+
+            self._addr_claim_timer.cancel()
+            self._can.remove_rx_filter(message.arbitration_id & ThingSetID.ADDR_CLAIM_MASK)
+            self._taken_node_addrs.append(taken_addr)
+
+            print(f"Address 0x{taken_addr:02X} is in use by another node...")
+
+            for new_addr in range(ThingSetID.MIN_ADDR, ThingSetID.MAX_ADDR):
+                if new_addr not in self._taken_node_addrs:
+                    self._negotiate_address(new_addr)
+                    return None
+
+            raise IOError(f"All addresses within range 0x{ThingSetID.MIN_ADDR:02X} to 0x{ThingSetID.MAX_ADDR:02X} are taken")
+        else:
+            print(f"Device tried to claim this nodes address 0x{self.node_addr:02X}, sending claim frame")
+            self._can.send(can.Message(arbitration_id=ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id,
+                                       data=self.EUI, is_fd=self._can.fd))
+
+    def _address_claim_complete(self, *args: tuple) -> None:
+        self.is_connected = True
+        self.node_addr = args[0]
+        self._taken_node_addrs = []
+
+        self._can.remove_rx_filter(ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id & ThingSetID.ADDR_CLAIM_MASK)
+        self._can.attach_rx_filter(ThingSetID.generate_discovery_id(self.node_addr).id, 0xFF00FF00, self._address_claim_handler)
+        self._can.send(can.Message(arbitration_id=ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id,
+                                   data=self.EUI, is_fd=self._can.fd))
+
+        print(f"Claimed node address 0x{self.node_addr:02X}")
+
+    @property
+    def bus(self) -> str:
+        return self._bus
+
+    @bus.setter
+    def bus(self, _bus: str) -> None:
+        self._bus = _bus
+
+    @property
+    def node_addr(self) -> int:
+        return self._node_addr
+
+    @node_addr.setter
+    def node_addr(self, _addr: Union[int, None]) -> None:
+        self._node_addr = _addr
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
+    @is_connected.setter
+    def is_connected(self, _is_connected: bool) -> None:
+        self._is_connected = _is_connected

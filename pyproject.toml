@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_thingset"
+version = "0.1.0"
+description = "A Python library for ThingSet functionality"
+authors = [
+    { name = "Adam Mitchell", email = "adam.mitchell@brillpower.com" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "can-isotp==2.0.6",
+    "cbor2==5.6.5",
+    "pyserial==3.5",
+    "python-can==4.5.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "mkdocs==1.6.1",
+    "mkdocs-material==9.5.49",
+    "mkdocstrings-python==1.13.0"
+]
+
+[project.urls]
+homepage = "https://gitlab.io/Brill-Power/python-thingset/"
+repository = "https://gitlab.com/Brill-Power/python-thingset/"
+documentation = "https://gitlab.com/Brill-Power/python-thingset/"
