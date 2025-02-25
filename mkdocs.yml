@@ -1,0 +1,23 @@
+site_name: Python ThingSet
+site_url: https://gitlab.io/Brill-Power/python-thingset
+site_dir: public
+docs_dir: ./docs
+
+theme:
+  name: "material"
+
+plugins:
+  - mkdocstrings
+
+nav:
+  - index.md
+  - python.md
+  - cli.md
+  - API reference:
+    - ThingSet: thingset.md
+    - ThingSetRequest: request.md
+    - ThingSetResponse: response.md
+    - ThingSetStatus: status.md
+    - ThingSetValue: value.md
+
+copyright: Copyright &copy; 2025 Brill Power

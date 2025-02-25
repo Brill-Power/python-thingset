@@ -1,0 +1,17 @@
+# ignore venv files
+*venv
+
+# ignore sensitive information
+*.env
+
+# ignore cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# ignore logs
+**/*.log
+
+# Mac files
+.DS_Store
