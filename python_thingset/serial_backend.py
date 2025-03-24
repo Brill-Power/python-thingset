@@ -10,8 +10,10 @@ from serial import Serial as PySerial
 
 from .backend import ThingSetBackend
 from .client import ThingSetClient
+from .log import get_logger
 from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
 
+logger = get_logger()
 
 class Serial(ThingSetBackend):
     def __init__(self, port: str="/dev/pts/5", baud=115200):
@@ -56,7 +58,7 @@ class Serial(ThingSetBackend):
         decoded = message.decode()
 
         """ if you want to print everything that happens on the shell, uncomment below """
-        # print(decoded)
+        logger.debug(decoded)
 
         if not decoded.startswith("thingset") and not decoded.startswith("uart") and not decoded.startswith("\x1b"):
             self._queue.put(decoded)
