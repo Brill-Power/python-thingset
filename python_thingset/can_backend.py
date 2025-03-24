@@ -16,8 +16,10 @@ import isotp
 from .backend import ThingSetBackend
 from .client import ThingSetClient
 from .id import ThingSetID
+from .log import get_logger
 from .response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
 
+logger = get_logger()
 
 class CAN(ThingSetBackend):
     def __init__(self, bus: str, interface: str = "socketcan", fd=True):
@@ -180,7 +182,7 @@ class ISOTP(ThingSetBackend):
             self._send_recurse_ctr += 1
             if self._send_recurse_ctr >= 10:
                 self._send_recurse_ctr = 0
-                print(f"ISOTP transmission retry limit exceeded")
+                logger.error(f"ISOTP transmission retry limit exceeded")
                 return None
 
             self.send(_data)
@@ -364,7 +366,7 @@ class ThingSetCAN(ThingSetClient):
         claim_id = ThingSetID.generate_claim_id(desired_addr, 0x00, 0x00)
         disco_id = ThingSetID.generate_discovery_id(desired_addr)
 
-        print(f"Attempting to claim node address 0x{desired_addr:02X}")
+        logger.debug(f"Attempting to claim node address 0x{desired_addr:02X}")
 
         self._can.attach_rx_filter(claim_id.id, ThingSetID.ADDR_CLAIM_MASK, self._address_claim_handler)
         self._can.send(can.Message(arbitration_id=disco_id.id, is_fd=self._can.fd))
@@ -379,7 +381,7 @@ class ThingSetCAN(ThingSetClient):
             self._can.remove_rx_filter(message.arbitration_id & ThingSetID.ADDR_CLAIM_MASK)
             self._taken_node_addrs.append(taken_addr)
 
-            print(f"Address 0x{taken_addr:02X} is in use by another node...")
+            logger.debug(f"Address 0x{taken_addr:02X} is in use by another node...")
 
             for new_addr in range(ThingSetID.MIN_ADDR, ThingSetID.MAX_ADDR):
                 if new_addr not in self._taken_node_addrs:
@@ -388,7 +390,7 @@ class ThingSetCAN(ThingSetClient):
 
             raise IOError(f"All addresses within range 0x{ThingSetID.MIN_ADDR:02X} to 0x{ThingSetID.MAX_ADDR:02X} are taken")
         else:
-            print(f"Device tried to claim this nodes address 0x{self.node_addr:02X}, sending claim frame")
+            logger.debug(f"Device tried to claim this nodes address 0x{self.node_addr:02X}, sending claim frame")
             self._can.send(can.Message(arbitration_id=ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id,
                                        data=self.EUI, is_fd=self._can.fd))
 
@@ -402,7 +404,7 @@ class ThingSetCAN(ThingSetClient):
         self._can.send(can.Message(arbitration_id=ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id,
                                    data=self.EUI, is_fd=self._can.fd))
 
-        print(f"Claimed node address 0x{self.node_addr:02X}")
+        logger.debug(f"Claimed node address 0x{self.node_addr:02X}")
 
     @property
     def bus(self) -> str:
