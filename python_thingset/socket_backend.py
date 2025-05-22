@@ -22,7 +22,9 @@ except:
     from log import get_logger
     from response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
 
+
 logger = get_logger()
+
 
 class Sock(ThingSetBackend):
     PORT = 9001
@@ -53,7 +55,7 @@ class Sock(ThingSetBackend):
         finally:
             if message is not None:
                 self._queue.task_done()
-            # self.disconnect()
+
             return message
 
     def _handle_message(self, message: bytes) -> None:
@@ -219,13 +221,13 @@ class ThingSetSock(ThingSetClient):
         self._is_connected = _is_connected
 
 
-if __name__ == "__main__":
-    s = ThingSetSock("192.0.2.1")
+# if __name__ == "__main__":
+#     s = ThingSetSock("192.0.2.1")
 
-    print(s.get(0x300))
-    print(s.update(0x300, [77.8], parent_id=0x0))
-    print(s.get(0x300))
-    print(s.fetch(0, []))
-    print(s.exec(0x1000, [4, 5]))
+#     print(s.get(0x300))
+#     print(s.update(0x300, [77.8], parent_id=0x0))
+#     print(s.get(0x300))
+#     print(s.fetch(0, []))
+#     print(s.exec(0x1000, [4, 5]))
 
-    s.disconnect()
+#     s.disconnect()
