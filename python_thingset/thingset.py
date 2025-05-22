@@ -5,16 +5,26 @@
 #
 from typing import Any, List, Union
 
-from .backend import ThingSetBackend
-from .can_backend import ThingSetCAN
-from .client import ThingSetClient
-from .response import ThingSetResponse
-from .serial_backend import ThingSetSerial
+try:
+    from .backend import ThingSetBackend
+    from .can_backend import ThingSetCAN
+    from .client import ThingSetClient
+    from .response import ThingSetResponse
+    from .serial_backend import ThingSetSerial
+    from .socket_backend import ThingSetSock
+except ImportError:
+    from backend import ThingSetBackend
+    from can_backend import ThingSetCAN
+    from client import ThingSetClient
+    from response import ThingSetResponse
+    from serial_backend import ThingSetSerial
+    from socket_backend import ThingSetSock
 
 
 class ThingSet(ThingSetClient):
     def __init__(self, backend: str="can", can_bus: str="vcan0", can_addr: int=0x00, init_block: bool=True,
-                 source_bus: int=0x00, target_bus: int=0x00, port: str="/dev/pts/5", baud: int=115200) -> "ThingSet":
+                 source_bus: int=0x00, target_bus: int=0x00, port: str="/dev/pts/5", baud: int=115200,
+                 ip_addr: str="192.0.2.1") -> "ThingSet":
         """ Constructor for ThingSet object
 
         Args:
@@ -26,6 +36,7 @@ class ThingSet(ThingSetClient):
             target_bus: bus number of target bus if using CAN backend
             port: serial port to connect over if using serial backend
             baud: serial baud rate if using serial backend
+            ip_addr: ipv4 address to connect to if using socket backend
 
         Returns:
             instance of a `ThingSet` object
@@ -38,6 +49,8 @@ class ThingSet(ThingSetClient):
                 self.backend = ThingSetCAN(can_bus, can_addr, source_bus=source_bus, target_bus=target_bus)
             case ThingSetBackend.Serial:
                 self.backend = ThingSetSerial(port, baud)
+            case ThingSetBackend.Socket:
+                self.backend = ThingSetSock(ip_addr)
             case _:
                 raise ValueError(f"Invalid backend specified ({backend})")
 

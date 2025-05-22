@@ -9,8 +9,10 @@ from typing import Any, List, Union
 
 import cbor2
 
-from .backend import ThingSetBackend
-
+try:
+    from .backend import ThingSetBackend
+except ImportError:
+    from backend import ThingSetBackend
 
 @dataclass
 class ThingSetStatus(object):
@@ -162,7 +164,7 @@ class ThingSetResponse(object):
 
         if data is not None:
             match self.backend:
-                case ThingSetBackend.CAN:
+                case ThingSetBackend.CAN | ThingSetBackend.Socket:
                     self._process_can(data)
                 case ThingSetBackend.Serial:
                     self._process_serial(data)
@@ -205,7 +207,7 @@ class ThingSetResponse(object):
 
     def _get_status_byte(self, data: bytes) -> int:
         match self.backend:
-            case ThingSetBackend.CAN:
+            case ThingSetBackend.CAN | ThingSetBackend.Socket:
                 return data[0]
             case ThingSetBackend.Serial:
                 try:

@@ -8,10 +8,17 @@ from typing import Any, List, Union
 
 from serial import Serial as PySerial
 
-from .backend import ThingSetBackend
-from .client import ThingSetClient
-from .log import get_logger
-from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
+try:
+    from .backend import ThingSetBackend
+    from .client import ThingSetClient
+    from .log import get_logger
+    from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
+except ImportError:
+    from backend import ThingSetBackend
+    from client import ThingSetClient
+    from log import get_logger
+    from response import ThingSetResponse, ThingSetStatus, ThingSetValue
+
 
 logger = get_logger()
 
