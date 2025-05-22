@@ -6,8 +6,10 @@
 from abc import ABC, abstractmethod
 from typing import Any, List, Union
 
-from .response import ThingSetResponse
-
+try:
+    from .response import ThingSetResponse
+except ImportError:
+    from response import ThingSetResponse
 
 class ThingSetClient(ABC):
     @abstractmethod

@@ -13,6 +13,7 @@ import can
 class ThingSetBackend(ABC):
     CAN:    str = "can"
     Serial: str = "serial"
+    Socket: str = "socket"
 
     def __init__(self):
         self._running = False

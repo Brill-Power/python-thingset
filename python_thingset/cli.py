@@ -10,8 +10,12 @@ import argparse
 from time import sleep
 from typing import Union
 
-from .backend import ThingSetBackend
-from .thingset import ThingSet
+try:
+    from .backend import ThingSetBackend
+    from .thingset import ThingSet
+except ImportError:
+    from backend import ThingSetBackend
+    from thingset import ThingSet
 
 
 def process_args(args: list) -> list:
@@ -79,6 +83,9 @@ def setup_args() -> argparse.Namespace:
                        nargs="?", type=str)
     parent_parser.add_argument("-r", "--baud-rate", help="Specify serial baud rate (example: 115200)",
                                nargs="?", default=115200, type=int)
+    
+    """ Socket options """
+    group.add_argument("-i", "--ip", help="Specify which IPv4 address to connect to (example 192.0.2.1)")
 
     """ Functions """
     subparsers = arg_parser.add_subparsers(dest="method", required=True, help="ThingSet function execute " \
@@ -134,9 +141,20 @@ def setup_args() -> argparse.Namespace:
                 args.value = [args.update_args[1]]
 
         args.backend = ThingSetBackend.Serial
+    elif args.ip:
+        args.backend = ThingSetBackend.Socket
 
-    if not (args.can_bus or args.port):
-        arg_parser.error("One of -c/--can_bus or -p/--port is required")
+        if args.method == "update":
+            if len(args.update_args) != 3:
+                arg_parser.error("When using update with -i/--ip you must suply a parent_id, value_id and value " \
+                                "(example: thingset update f f03 MyValue -i 192.0.2.1")
+            else:
+                args.parent_id = args.update_args[0]
+                args.value_id = args.update_args[1]
+                args.value = [args.update_args[2]]
+
+    if not (args.can_bus or args.port or args.ip):
+        arg_parser.error("One of -c/--can_bus, -i/--ip or -p/--port is required")
 
     return args
 
@@ -151,11 +169,15 @@ def run_cli():
             case "get":
                 if args.backend.lower() == "serial":
                     response = ts.get(args.id)
+                elif args.backend.lower() == "socket":
+                    response = ts.get(int(args.id, 16))
                 else:
                     response = ts.get(int(args.target_address, 16), int(args.id, 16))
             case "fetch":
                 if args.backend.lower() == "serial":
                     response = ts.fetch(args.parent_id, args.value_ids)
+                elif args.backend.lower() == "socket":
+                    response = ts.fetch(int(args.parent_id, 16), [int(i, 16) for i in args.value_ids])
                 else:
                     response = ts.fetch(int(args.parent_id, 16), [int(i, 16) for i in args.value_ids], int(args.target_address, 16))
             case "exec":
@@ -163,17 +185,24 @@ def run_cli():
 
                 if args.backend.lower() == "serial":
                     response = ts.exec(args.value_id, p_args)
+                elif args.backend.lower() == "socket":
+                    response = ts.exec(int(args.value_id, 16), p_args)
                 else:
                     response = ts.exec(int(args.value_id, 16), p_args, node_id=int(args.target_address, 16))
             case "update":
                 if args.backend.lower() == "serial":
                     response = ts.update(args.parent_id, args.value)
+                elif args.backend.lower() == "socket":
+                    p_args = process_args(args.value)
+                    response = ts.update(int(args.value_id, 16), p_args[0], parent_id=int(args.parent_id, 16))
                 else:
                     p_args = process_args(args.value)
                     response = ts.update(int(args.value_id, 16), p_args[0], int(args.target_address, 16), int(args.parent_id, 16))
             case "schema":
                 if args.backend.lower() == "serial":
                     get_schema(ts, args.root_id)
+                elif args.backend.lower() == "socket":
+                    get_schema(ts, int(args.root_id, 16))
                 else:
                     get_schema(ts, int(args.root_id, 16), int(args.target_address, 16))
             case _:

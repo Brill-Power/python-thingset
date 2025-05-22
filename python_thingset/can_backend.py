@@ -13,11 +13,19 @@ import can
 import cbor2
 import isotp
 
-from .backend import ThingSetBackend
-from .client import ThingSetClient
-from .id import ThingSetID
-from .log import get_logger
-from .response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+try:
+    from .backend import ThingSetBackend
+    from .client import ThingSetClient
+    from .id import ThingSetID
+    from .log import get_logger
+    from .response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+except ImportError:
+    from backend import ThingSetBackend
+    from client import ThingSetClient
+    from id import ThingSetID
+    from log import get_logger
+    from response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+
 
 logger = get_logger()
 
