@@ -3,27 +3,20 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-import json
 import queue
 import socket
-import struct
 from typing import Any, List, Union
-
-import cbor2
 
 try:
     from .backend import ThingSetBackend
+    from .binary_encoder import ThingSetBinaryEncoder
     from .client import ThingSetClient
-    from .log import get_logger
-    from .response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+    from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
 except:
     from backend import ThingSetBackend
+    from binary_encoder import ThingSetBinaryEncoder
     from client import ThingSetClient
-    from log import get_logger
-    from response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
-
-
-logger = get_logger()
+    from response import ThingSetResponse, ThingSetStatus, ThingSetValue
 
 
 class Sock(ThingSetBackend):
@@ -81,8 +74,10 @@ class Sock(ThingSetBackend):
             pass
 
 
-class ThingSetSock(ThingSetClient):
+class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
     def __init__(self, address: str="192.0.2.1"):
+        super().__init__()
+
         self.address = address
 
         self._sock = Sock(address)
@@ -94,16 +89,7 @@ class ThingSetSock(ThingSetClient):
         self.is_connected = False
 
     def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None, get_paths: bool=True) -> ThingSetResponse:
-        req = bytearray()
-        req.append(ThingSetRequest.FETCH)
-        req += cbor2.dumps(parent_id, canonical=True)
-
-        if (len(ids) == 0):
-            req.append(0xF6) # null
-        else:
-            req += cbor2.dumps(ids, canonical=True)
-
-        self._sock.send(req)
+        self._sock.send(self.encode_fetch(parent_id, ids))
         msg = self._sock.get_message()
 
         tmp = ThingSetResponse(ThingSetBackend.Socket, msg)
@@ -118,16 +104,13 @@ class ThingSetSock(ThingSetClient):
                 if len(ids) == 0:
                     values.append(self._create_value(parent_id, tmp.data, get_paths))
                 else:
-
                     for idx, id in enumerate(ids):
                         values.append(self._create_value(id, tmp.data[idx], get_paths))
 
         return ThingSetResponse(ThingSetBackend.Socket, msg, values)
 
     def get(self, value_id: Union[int, str], node_id: Union[int, None]=None) -> ThingSetResponse:
-        payload = bytes([ThingSetRequest.GET] + list(cbor2.dumps(value_id)))
-
-        self._sock.send(payload)
+        self._sock.send(self.encode_get(value_id))
         msg = self._sock.get_message()
 
         tmp = ThingSetResponse(ThingSetBackend.Socket, msg)
@@ -141,68 +124,27 @@ class ThingSetSock(ThingSetClient):
         return ThingSetResponse(ThingSetBackend.Socket, msg, values)
 
     def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
-        p_args = list()
-
-        for a in args:
-            if isinstance(a, float):
-                p_args.append(self._to_f32(a))
-            elif isinstance(a, str):
-                if "true" == a.lower() or "false" == a.lower():
-                    p_args.append(json.loads(a.lower()))
-                else:
-                    p_args.append(a)
-            else:
-                p_args.append(a)
-
-        payload = bytes([ThingSetRequest.EXEC] + list(cbor2.dumps(value_id)) + list(cbor2.dumps(p_args, canonical=True)))
-
-        self._sock.send(payload)
+        self._sock.send(self.encode_exec(value_id, args))
         msg = self._sock.get_message()
 
         return ThingSetResponse(ThingSetBackend.Socket, msg)
 
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
-        if isinstance(value, float):
-            value = self._to_f32(value)
-        if isinstance(value, str):
-            if "true" == value.lower() or "false" == value.lower():
-                value = json.loads(value.lower())
-
-        payload = bytes([ThingSetRequest.UPDATE] + list(cbor2.dumps(parent_id)) + list(cbor2.dumps({value_id:value}, canonical=True)))
-
-        self._sock.send(payload)
+        self._sock.send(self.encode_update(parent_id, value_id, value))
         msg = self._sock.get_message()
 
         return ThingSetResponse(ThingSetBackend.Socket, msg)
 
-    def _to_f32(self, value: float) -> float:
-        """ In Python, all floats are actually doubles. This does not map well to embedded targets where
-        there is a clear distinction between the two.
-
-        This function forces the provided floating point argument, value, to its closest 32-bit
-        representation so that the resultant encoded (CBOR) value is actually a float (not a double)
-        and can be properly parsed by ThingSet running on an embedded target when expecting a float
-        """
-        return struct.unpack('f', struct.pack('f', value))[0]
-
     def _create_value(self, value_id: int, value: Any, get_paths: bool=True) -> ThingSetValue:
-        path = None
-
-        if get_paths:
-            path = self._get_path(value_id)
-
-        return ThingSetValue(value_id, value, path)
+        return ThingSetValue(value_id, value, self._get_path(value_id) if get_paths else None)
 
     def _get_path(self, value_id: int) -> str:
         if value_id == ThingSetValue.ID_ROOT:
             return "Root"
 
-        payload = bytearray([ThingSetRequest.FETCH, 0x17])
-        payload.extend(cbor2.dumps([value_id]))
+        self._sock.send(self.encode_get_path(value_id))
 
-        self._sock.send(payload)
-
-        return ThingSetResponse(ThingSetBackend.Socket, self._sock.get_message).data[0]
+        return ThingSetResponse(ThingSetBackend.Socket, self._sock.get_message()).data[0]
 
     @property
     def address(self) -> str:

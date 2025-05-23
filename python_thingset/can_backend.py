@@ -3,28 +3,27 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-import json
 import queue
-import struct
 import threading
 from typing import Any, Callable, List, Tuple, Union
 
 import can
-import cbor2
 import isotp
 
 try:
     from .backend import ThingSetBackend
+    from .binary_encoder import ThingSetBinaryEncoder
     from .client import ThingSetClient
     from .id import ThingSetID
     from .log import get_logger
-    from .response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+    from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
 except ImportError:
     from backend import ThingSetBackend
+    from binary_encoder import ThingSetBinaryEncoder
     from client import ThingSetClient
     from id import ThingSetID
     from log import get_logger
-    from response import ThingSetResponse, ThingSetRequest, ThingSetStatus, ThingSetValue
+    from response import ThingSetResponse, ThingSetStatus, ThingSetValue
 
 
 logger = get_logger()
@@ -146,7 +145,7 @@ class ISOTP(ThingSetBackend):
         self._address = isotp.Address(addressing_mode=isotp.AddressingMode.Normal_29bits,
                                       rxid=self.rx_id, txid=self.tx_id)
 
-    def get_message(self, timeout: float) -> Union[bytes, None]:
+    def get_message(self, timeout: float=1.0) -> Union[bytes, None]:
         message = None
 
         try:
@@ -202,13 +201,15 @@ class ISOTP(ThingSetBackend):
             return None
 
 
-class ThingSetCAN(ThingSetClient):
+class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
     ADDR_CLAIM_TIMEOUT_MS: int = 500
     CONNECT_TIMEOUT_MS:    int = 10000
 
     EUI: list = [0xDE, 0xAD, 0xBE, 0xEF, 0xC0, 0xFF, 0xEE, 0xEE]
 
     def __init__(self, bus: str, addr: int = 0x00, source_bus: int=0x00, target_bus: int=0x00):
+        super().__init__()
+        
         self.bus = bus
         self.node_addr = None
         self.source_bus = source_bus
@@ -230,27 +231,12 @@ class ThingSetCAN(ThingSetClient):
 
         self._can.remove_all_rx_filters()
 
-    # Request:
-    # 05                                      # FETCH
-    #    F6                                   # inexplicable null
-    #    02                                   # CBOR uint: 0x02 (parent ID)
-    #    82                                   # CBOR array (2 elements)
-    #       18 40                             # CBOR uint: 0x40 (object ID)
-    #       18 41                             # CBOR uint: 0x41 (object ID)
     def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None, get_paths: bool=True) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
 
-        req = bytearray()
-        req.append(ThingSetRequest.FETCH)
-        req += cbor2.dumps(parent_id, canonical=True)
-        if (len(ids) == 0):
-            req.append(0xF6) # null
-        else:
-            req += cbor2.dumps(ids, canonical=True)
-
         i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(req)
-        msg = i.get_message(1.0)
+        i.send(self.encode_fetch(parent_id, ids))
+        msg = i.get_message()
 
         tmp = ThingSetResponse(ThingSetBackend.CAN, msg)
 
@@ -273,11 +259,9 @@ class ThingSetCAN(ThingSetClient):
     def get(self, node_id: int, value_id: int, get_paths: bool=True) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
 
-        payload = bytes([ThingSetRequest.GET] + list(cbor2.dumps(value_id)))
-
         i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(payload)
-        msg = i.get_message(1.0)
+        i.send(self.encode_get(value_id))
+        msg = i.get_message()
 
         tmp = ThingSetResponse(ThingSetBackend.CAN, msg)
 
@@ -292,61 +276,23 @@ class ThingSetCAN(ThingSetClient):
     def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
 
-        p_args = list()
-
-        for a in args:
-            if isinstance(a, float):
-                p_args.append(self._to_f32(a))
-            elif isinstance(a, str):
-                if "true" == a.lower() or "false" == a.lower():
-                    p_args.append(json.loads(a.lower()))
-                else:
-                    p_args.append(a)
-            else:
-                p_args.append(a)
-
-        payload = bytes([ThingSetRequest.EXEC] + list(cbor2.dumps(value_id)) + list(cbor2.dumps(p_args, canonical=True)))
-
         i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(payload)
-        msg = i.get_message(1.0)
+        i.send(self.encode_exec(value_id, args))
+        msg = i.get_message()
 
         return ThingSetResponse(ThingSetBackend.CAN, msg)
 
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
 
-        if isinstance(value, float):
-            value = self._to_f32(value)
-        if isinstance(value, str):
-            if "true" == value.lower() or "false" == value.lower():
-                value = json.loads(value.lower())
-
-        payload = bytes([ThingSetRequest.UPDATE] + list(cbor2.dumps(parent_id)) + list(cbor2.dumps({value_id:value}, canonical=True)))
-
         i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(payload)
-        msg = i.get_message(1.0)
+        i.send(self.encode_update(parent_id, value_id, value))
+        msg = i.get_message()
 
         return ThingSetResponse(ThingSetBackend.CAN, msg)
 
-    def _to_f32(self, value: float) -> float:
-        """ In Python, all floats are actually doubles. This does not map well to embedded targets where
-        there is a clear distinction between the two.
-
-        This function forces the provided floating point argument, value, to its closest 32-bit
-        representation so that the resultant encoded (CBOR) value is actually a float (not a double)
-        and can be properly parsed by ThingSet running on an embedded target when expecting a float
-        """
-        return struct.unpack('f', struct.pack('f', value))[0]
-
     def _create_value(self, node_id: int, value_id: int, value: Any, get_paths: bool=True) -> ThingSetValue:
-        path = None
-
-        if get_paths:
-            path = self._get_path(node_id, value_id)
-
-        return ThingSetValue(value_id, value, path)
+        return ThingSetValue(value_id, value, self._get_path(node_id, value_id) if get_paths else None)
 
     def _get_path(self, node_id: int, value_id: int) -> str:
         if value_id == ThingSetValue.ID_ROOT:
@@ -354,13 +300,10 @@ class ThingSetCAN(ThingSetClient):
 
         req_id, resp_id = self._get_isotp_ids(node_id)
 
-        payload = bytearray([ThingSetRequest.FETCH, 0x17])
-        payload.extend(cbor2.dumps([value_id]))
-
         i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(payload)
+        i.send(self.encode_get_path(value_id))
 
-        return ThingSetResponse(ThingSetBackend.CAN, i.get_message(1.0)).data[0]
+        return ThingSetResponse(ThingSetBackend.CAN, i.get_message()).data[0]
 
     def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID]:
         return (
