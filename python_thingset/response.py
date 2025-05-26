@@ -154,8 +154,12 @@ class ThingSetValue(object):
 
 
 class ThingSetResponse(object):
+    MODE_BIN = 0x1
+    MODE_TXT = 0x2
+
     def __init__(self, backend: str, data: Union[bytes, str, None], values: Union[List[ThingSetValue], None] = None):
-        self.backend = backend
+        """ mode is set based on type of backend; binary for CAN or sockets or text for serial """
+        self.mode = backend
 
         self.status_code = None
         self.status_string = None
@@ -163,13 +167,13 @@ class ThingSetResponse(object):
         self.values = values
 
         if data is not None:
-            match self.backend:
-                case ThingSetBackend.CAN | ThingSetBackend.Socket:
-                    self._process_can(data)
-                case ThingSetBackend.Serial:
-                    self._process_serial(data)
+            match self.mode:
+                case self.MODE_BIN:
+                    self._process_bin(data)
+                case self.MODE_TXT:
+                    self._process_txt(data)
                 case _:
-                    raise ValueError(f"Invalid backend ({backend}) specified")
+                    raise ValueError(f"Invalid mode ({self.mode}) specified")
 
     def __str__(self) -> str:
         code = None
@@ -179,7 +183,7 @@ class ThingSetResponse(object):
 
         return f"{code} ({self.status_string}): {self.data}"
 
-    def _process_serial(self, data: str) -> None:
+    def _process_txt(self, data: str) -> None:
         self._raw_data = data
         self._processed_data = data.split("\r\n")[0][4:]
 
@@ -192,7 +196,7 @@ class ThingSetResponse(object):
             except json.decoder.JSONDecodeError:
                 pass
 
-    def _process_can(self, data: bytes) -> None:
+    def _process_bin(self, data: bytes) -> None:
         self._raw_data = data
         self._processed_data = self._strip_null(self._raw_data)
 
@@ -206,10 +210,10 @@ class ThingSetResponse(object):
                 self.data = e
 
     def _get_status_byte(self, data: bytes) -> int:
-        match self.backend:
-            case ThingSetBackend.CAN | ThingSetBackend.Socket:
+        match self.mode:
+            case self.MODE_BIN:
                 return data[0]
-            case ThingSetBackend.Serial:
+            case self.MODE_TXT:
                 try:
                     return int(data[1:3], 16)
                 except ValueError:
@@ -217,6 +221,18 @@ class ThingSetResponse(object):
 
     def _strip_null(self, data: bytes) -> bytes:
         return data[1:].replace(b'\xf6', b'')
+
+    @property
+    def mode(self) -> int:
+        return self._mode
+
+    @mode.setter
+    def mode(self, _backend) -> None:
+        match _backend:
+            case ThingSetBackend.CAN | ThingSetBackend.Socket:
+                self._mode = self.MODE_BIN
+            case ThingSetBackend.Serial:
+                self._mode = self.MODE_TXT
 
     @property
     def status_code(self) -> int:
