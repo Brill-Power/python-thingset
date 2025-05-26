@@ -13,11 +13,13 @@ try:
     from .client import ThingSetClient
     from .log import get_logger
     from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
+    from .text_encoder import ThingSetTextEncoder
 except ImportError:
     from backend import ThingSetBackend
     from client import ThingSetClient
     from log import get_logger
     from response import ThingSetResponse, ThingSetStatus, ThingSetValue
+    from text_encoder import ThingSetTextEncoder
 
 
 logger = get_logger()
@@ -89,8 +91,10 @@ class Serial(ThingSetBackend):
         return self._serial.read_until("\n".encode())
 
 
-class ThingSetSerial(ThingSetClient):
+class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
     def __init__(self, port: str="/dev/pts/5", baud=115200):
+        super().__init__()
+
         self.port = port
         self.baud = baud
 
@@ -103,19 +107,7 @@ class ThingSetSerial(ThingSetClient):
         self.is_connected = False
 
     def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None) -> ThingSetResponse:
-        children = "null"
-
-        if len(ids) > 0:
-            children = "["
-
-            for i in ids:
-                children += f'\\"{i}\\",'
-
-            children += "]"
-
-        message = f"thingset ?{parent_id} {children}\n".encode()
-
-        self._serial.send(message)
+        self._serial.send(self.encode_fetch(parent_id, ids))
         msg = self._serial.get_message(.5)
 
         tmp = ThingSetResponse(ThingSetBackend.Serial, msg)
@@ -134,9 +126,7 @@ class ThingSetSerial(ThingSetClient):
         return ThingSetResponse(ThingSetBackend.Serial, msg, values)
 
     def get(self, value_id: Union[int, str], node_id: Union[int, None]=None) -> ThingSetResponse:
-        message = f"thingset ?{value_id}\n".encode()
-
-        self._serial.send(message)
+        self._serial.send(self.encode_get(value_id))
         msg = self._serial.get_message(.5)
 
         tmp = ThingSetResponse(ThingSetBackend.Serial, msg)
@@ -150,73 +140,13 @@ class ThingSetSerial(ThingSetClient):
         return ThingSetResponse(ThingSetBackend.Serial, msg, values)
 
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
-        """ properly format strings for transmission, add args to stringified list """
-        value = value[0]
-
-        val = None
-
-        try:
-            val = int(value)
-        except ValueError:
-            pass
-
-        if val is None:
-            try:
-                val = float(value)
-            except ValueError:
-                pass
-
-        if val is None:
-            val = f'\\"{value}\\"'
-
-        path = " "
-        value_name = None
-
-        path_split = value_id.split("/")
-
-        if len(path_split) > 1:
-            path = "/".join(path_split[:-1]) + " "
-            value_name = path_split[-1]
-        else:
-            value_name = path_split[0]
-
-        value_path = f'{path}£\\"{value_name}\\":{val}$'
-        value_path = value_path.replace("£", "{").replace("$", "}")
-
-        message = f"""thingset ={value_path}\n""".encode()
-
-        self._serial.send(message)
+        self._serial.send(self.encode_update(value_id, value))
         msg = self._serial.get_message(0.5)
 
         return ThingSetResponse(ThingSetBackend.Serial, msg)
 
     def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
-        """ properly format strings for transmission, add args to stringified list """
-        processed_args = "["
-
-        """ leave numeric values as is, surround strings with escape chars """
-        for a in args:
-            try:
-                int(a)
-                processed_args += f"{a},"
-                continue
-            except ValueError:
-                pass
-
-            try:
-                float(a)
-                processed_args += f"{a},"
-                continue
-            except ValueError:
-                pass
-
-            processed_args += f'\\"{a}\\",'
-
-        processed_args += "]"
-
-        message = f"""thingset !{value_id} {processed_args}\n""".encode()
-
-        self._serial.send(message)
+        self._serial.send(self.encode_exec(value_id, args))
         msg = self._serial.get_message(.5)
 
         return ThingSetResponse(ThingSetBackend.Serial, msg)
