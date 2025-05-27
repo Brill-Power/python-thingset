@@ -76,6 +76,8 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
     def __init__(self, address: str="192.0.2.1"):
         super().__init__()
 
+        self.backend = ThingSetBackend.Socket
+
         self.address = address
 
         self._sock = Sock(address)
@@ -90,7 +92,7 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
         self._sock.send(self.encode_fetch(parent_id, ids))
         msg = self._sock.get_message()
 
-        tmp = ThingSetResponse(ThingSetBackend.Socket, msg)
+        tmp = ThingSetResponse(self.backend, msg)
 
         values = []
 
@@ -105,13 +107,13 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
                     for idx, id in enumerate(ids):
                         values.append(self._create_value(id, tmp.data[idx], get_paths))
 
-        return ThingSetResponse(ThingSetBackend.Socket, msg, values)
+        return ThingSetResponse(self.backend, msg, values)
 
     def get(self, value_id: Union[int, str], node_id: Union[int, None]=None) -> ThingSetResponse:
         self._sock.send(self.encode_get(value_id))
         msg = self._sock.get_message()
 
-        tmp = ThingSetResponse(ThingSetBackend.Socket, msg)
+        tmp = ThingSetResponse(self.backend, msg)
 
         values = []
 
@@ -119,19 +121,19 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
             if tmp.status_code <= ThingSetStatus.CONTENT:
                 values.append(ThingSetValue(None, tmp.data, value_id))
 
-        return ThingSetResponse(ThingSetBackend.Socket, msg, values)
+        return ThingSetResponse(self.backend, msg, values)
 
     def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
         self._sock.send(self.encode_exec(value_id, args))
         msg = self._sock.get_message()
 
-        return ThingSetResponse(ThingSetBackend.Socket, msg)
+        return ThingSetResponse(self.backend, msg)
 
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
         self._sock.send(self.encode_update(parent_id, value_id, value))
         msg = self._sock.get_message()
 
-        return ThingSetResponse(ThingSetBackend.Socket, msg)
+        return ThingSetResponse(self.backend, msg)
 
     def _create_value(self, value_id: int, value: Any, get_paths: bool=True) -> ThingSetValue:
         return ThingSetValue(value_id, value, self._get_path(value_id) if get_paths else None)
@@ -142,7 +144,7 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
 
         self._sock.send(self.encode_get_path(value_id))
 
-        return ThingSetResponse(ThingSetBackend.Socket, self._sock.get_message()).data[0]
+        return ThingSetResponse(self.backend, self._sock.get_message()).data[0]
 
     @property
     def address(self) -> str:

@@ -205,6 +205,8 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
 
     def __init__(self, bus: str, addr: int = 0x00, source_bus: int=0x00, target_bus: int=0x00):
         super().__init__()
+
+        self.backend = ThingSetBackend.CAN
         
         self.bus = bus
         self.node_addr = None
@@ -234,7 +236,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         i.send(self.encode_fetch(parent_id, ids))
         msg = i.get_message()
 
-        tmp = ThingSetResponse(ThingSetBackend.CAN, msg)
+        tmp = ThingSetResponse(self.backend, msg)
 
         values = []
 
@@ -250,7 +252,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
                     for idx, id in enumerate(ids):
                         values.append(self._create_value(node_id, id, tmp.data[idx], get_paths))
 
-        return ThingSetResponse(ThingSetBackend.CAN, msg, values)
+        return ThingSetResponse(self.backend, msg, values)
 
     def get(self, node_id: int, value_id: int, get_paths: bool=True) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
@@ -259,7 +261,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         i.send(self.encode_get(value_id))
         msg = i.get_message()
 
-        tmp = ThingSetResponse(ThingSetBackend.CAN, msg)
+        tmp = ThingSetResponse(self.backend, msg)
 
         values = []
 
@@ -267,7 +269,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
             if tmp.status_code <= ThingSetStatus.CONTENT:
                 values.append(self._create_value(node_id, value_id, tmp.data, get_paths))
 
-        return ThingSetResponse(ThingSetBackend.CAN, msg, values)
+        return ThingSetResponse(self.backend, msg, values)
 
     def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
@@ -276,7 +278,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         i.send(self.encode_exec(value_id, args))
         msg = i.get_message()
 
-        return ThingSetResponse(ThingSetBackend.CAN, msg)
+        return ThingSetResponse(self.backend, msg)
 
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
         req_id, resp_id = self._get_isotp_ids(node_id)
@@ -285,7 +287,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         i.send(self.encode_update(parent_id, value_id, value))
         msg = i.get_message()
 
-        return ThingSetResponse(ThingSetBackend.CAN, msg)
+        return ThingSetResponse(self.backend, msg)
 
     def _create_value(self, node_id: int, value_id: int, value: Any, get_paths: bool=True) -> ThingSetValue:
         return ThingSetValue(value_id, value, self._get_path(node_id, value_id) if get_paths else None)
@@ -299,7 +301,7 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         i = ISOTP(self.bus, resp_id.id, req_id.id)
         i.send(self.encode_get_path(value_id))
 
-        return ThingSetResponse(ThingSetBackend.CAN, i.get_message()).data[0]
+        return ThingSetResponse(self.backend, i.get_message()).data[0]
 
     def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID]:
         return (
