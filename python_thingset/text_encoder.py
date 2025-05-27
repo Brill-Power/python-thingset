@@ -52,7 +52,7 @@ class ThingSetTextEncoder(object):
 
         return f"""thingset !{value_id} {processed_args}\n""".encode()
     
-    def encode_update(self, value_id: str, value: Any) -> bytes:
+    def encode_update(self, parent_id: None, value_id: str, value: Any) -> bytes:
         """ properly format strings for transmission, add args to stringified list """
         value = value[0]
 
