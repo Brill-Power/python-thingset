@@ -6,14 +6,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, List, Union
 
-try:
-    from .backend import ThingSetBackend
-    from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
-    from .log import get_logger
-except ImportError:
-    from backend import ThingSetBackend
-    from response import ThingSetResponse, ThingSetStatus, ThingSetValue
-    from log import get_logger
+from .backends.backend import ThingSetBackend
+from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
+from .log import get_logger
 
 
 logger = get_logger()

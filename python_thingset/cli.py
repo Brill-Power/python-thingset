@@ -10,12 +10,8 @@ import argparse
 from time import sleep
 from typing import Union
 
-try:
-    from .backend import ThingSetBackend
-    from .thingset import ThingSet
-except ImportError:
-    from backend import ThingSetBackend
-    from thingset import ThingSet
+from .backends.backend import ThingSetBackend
+from .thingset import ThingSet
 
 
 def process_args(args: list) -> list:

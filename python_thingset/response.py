@@ -9,10 +9,7 @@ from typing import Any, List, Union
 
 import cbor2
 
-try:
-    from .backend import ThingSetBackend
-except ImportError:
-    from backend import ThingSetBackend
+from .backends.backend import ThingSetBackend
 
 @dataclass
 class ThingSetStatus(object):

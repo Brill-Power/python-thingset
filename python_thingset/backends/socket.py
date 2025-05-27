@@ -7,14 +7,9 @@ import queue
 import socket
 from typing import Union
 
-try:
-    from .backend import ThingSetBackend
-    from .binary_encoder import ThingSetBinaryEncoder
-    from .client import ThingSetClient
-except:
-    from backend import ThingSetBackend
-    from binary_encoder import ThingSetBinaryEncoder
-    from client import ThingSetClient
+from .backend import ThingSetBackend
+from ..client import ThingSetClient
+from ..encoders.binary import ThingSetBinaryEncoder
 
 
 class Sock(ThingSetBackend):
