@@ -31,3 +31,11 @@ class ThingSetClient(ABC):
     @abstractmethod
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
         pass
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
+    @is_connected.setter
+    def is_connected(self, _is_connected: bool) -> None:
+        self._is_connected = _is_connected

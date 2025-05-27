@@ -56,13 +56,11 @@ class Sock(ThingSetBackend):
 
     def connect(self) -> None:
         self._sock.connect((self.address, self.PORT))
-        self.is_connected = True
         self.start_receiving()
 
     def disconnect(self) -> None:
         self.stop_receiving()
         self._sock.close()
-        self.is_connected = False
 
     def send(self, _data: bytes) -> None:
         self._sock.sendall(_data)
@@ -153,23 +151,3 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
     @address.setter
     def address(self, _address) -> None:
         self._address = _address
-
-    @property
-    def is_connected(self) -> bool:
-        return self._is_connected
-
-    @is_connected.setter
-    def is_connected(self, _is_connected: bool) -> None:
-        self._is_connected = _is_connected
-
-
-# if __name__ == "__main__":
-#     s = ThingSetSock("192.0.2.1")
-
-#     print(s.get(0x300))
-#     print(s.update(0x300, [77.8], parent_id=0x0))
-#     print(s.get(0x300))
-#     print(s.fetch(0, []))
-#     print(s.exec(0x1000, [4, 5]))
-
-#     s.disconnect()

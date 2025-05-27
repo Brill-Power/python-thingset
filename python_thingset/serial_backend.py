@@ -75,14 +75,12 @@ class Serial(ThingSetBackend):
     def connect(self) -> None:
         if not self._serial:
             self._serial = PySerial(self.port, self.baud, timeout=.1)
-            self.is_connected = True
             self.start_receiving()
 
     def disconnect(self) -> None:
         if self._serial:
             self.stop_receiving()
             self._serial.close()
-            self.is_connected = False
 
     def send(self, _data: bytes) -> None:
         self._serial.write(_data)
@@ -166,11 +164,3 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
     @baud.setter
     def baud(self, _baud) -> None:
         self._baud = _baud
-
-    @property
-    def is_connected(self) -> bool:
-        return self._is_connected
-
-    @is_connected.setter
-    def is_connected(self, _is_connected: bool) -> None:
-        self._is_connected = _is_connected
