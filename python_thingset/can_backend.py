@@ -82,14 +82,12 @@ class CAN(ThingSetBackend):
     def connect(self) -> None:
         if not self._can:
             self._can = can.Bus(channel=self.bus, interface=self.interface, fd=self.fd)
-            self.is_connected = True
             self.start_receiving()
 
     def disconnect(self) -> None:
         if self._can:
             self.stop_receiving()
             self._can.shutdown()
-            self.is_connected = False
 
     def receive(self) -> can.Message:
         return self._can.recv(timeout=0.1)
@@ -163,13 +161,11 @@ class ISOTP(ThingSetBackend):
 
     def connect(self) -> None:
         self._sock.bind(self.bus, self._address)
-        self.is_connected = True
         self.start_receiving()
 
     def disconnect(self) -> None:
         self.stop_receiving()
         self._sock.close()
-        self.is_connected = False
 
     def send(self, _data: bytes) -> None:
         """ We have recursive calls to self.send here as we can't easily tell when the CAN
@@ -372,11 +368,3 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
     @node_addr.setter
     def node_addr(self, _addr: Union[int, None]) -> None:
         self._node_addr = _addr
-
-    @property
-    def is_connected(self) -> bool:
-        return self._is_connected
-
-    @is_connected.setter
-    def is_connected(self, _is_connected: bool) -> None:
-        self._is_connected = _is_connected

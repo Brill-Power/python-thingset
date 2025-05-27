@@ -152,3 +152,18 @@ thingset exec 66 1.2 2.3 3.55 -c vcan0 -t 2f
 thingset schema -c vcan0 -t 2f
 thingset schema f -c vcan0 -t 2f
 ```
+
+#### Socket examples
+
+```
+ if __name__ == "__main__":
+    s = ThingSetSock("192.0.2.1")
+
+    print(s.get(0x300))
+    print(s.update(0x300, [77.8], parent_id=0x0))
+    print(s.get(0x300))
+    print(s.fetch(0, []))
+    print(s.exec(0x1000, [4, 5]))
+
+    s.disconnect()
+```

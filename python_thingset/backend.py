@@ -19,16 +19,6 @@ class ThingSetBackend(ABC):
         self._running = False
         self._thread = None
 
-        self.is_connected = False
-
-    @property
-    def is_connected(self) -> bool:
-        return self._is_connected
-
-    @is_connected.setter
-    def is_connected(self, _is_connected) -> None:
-        self._is_connected = _is_connected
-
     def start_receiving(self) -> None:
         if not self._running:
             self._running = True
