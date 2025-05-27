@@ -93,6 +93,8 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
     def __init__(self, port: str="/dev/pts/5", baud=115200):
         super().__init__()
 
+        self.backend = ThingSetBackend.Serial
+
         self.port = port
         self.baud = baud
 
@@ -108,7 +110,7 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
         self._serial.send(self.encode_fetch(parent_id, ids))
         msg = self._serial.get_message(.5)
 
-        tmp = ThingSetResponse(ThingSetBackend.Serial, msg)
+        tmp = ThingSetResponse(self.backend, msg)
 
         values = []
 
@@ -121,13 +123,13 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
                     for idx, i in enumerate(ids):
                         values.append(ThingSetValue(None, tmp.data[idx], i))
 
-        return ThingSetResponse(ThingSetBackend.Serial, msg, values)
+        return ThingSetResponse(self.backend, msg, values)
 
     def get(self, value_id: Union[int, str], node_id: Union[int, None]=None) -> ThingSetResponse:
         self._serial.send(self.encode_get(value_id))
         msg = self._serial.get_message(.5)
 
-        tmp = ThingSetResponse(ThingSetBackend.Serial, msg)
+        tmp = ThingSetResponse(self.backend, msg)
 
         values = []
 
@@ -135,19 +137,19 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
             if tmp.status_code <= ThingSetStatus.CONTENT:
                 values.append(ThingSetValue(None, tmp.data, value_id))
 
-        return ThingSetResponse(ThingSetBackend.Serial, msg, values)
+        return ThingSetResponse(self.backend, msg, values)
 
     def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
         self._serial.send(self.encode_update(value_id, value))
         msg = self._serial.get_message(0.5)
 
-        return ThingSetResponse(ThingSetBackend.Serial, msg)
+        return ThingSetResponse(self.backend, msg)
 
     def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
         self._serial.send(self.encode_exec(value_id, args))
         msg = self._serial.get_message(.5)
 
-        return ThingSetResponse(ThingSetBackend.Serial, msg)
+        return ThingSetResponse(self.backend, msg)
 
     @property
     def port(self) -> str:

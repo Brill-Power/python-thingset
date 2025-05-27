@@ -39,3 +39,11 @@ class ThingSetClient(ABC):
     @is_connected.setter
     def is_connected(self, _is_connected: bool) -> None:
         self._is_connected = _is_connected
+
+    @property
+    def backend(self) -> str:
+        return self._backend
+    
+    @backend.setter
+    def backend(self, _backend) -> None:
+        self._backend = _backend
