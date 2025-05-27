@@ -18,7 +18,7 @@ logger = get_logger()
 
 
 class Serial(ThingSetBackend):
-    def __init__(self, port: str="/dev/pts/5", baud=115200):
+    def __init__(self, port: str = "/dev/pts/5", baud=115200):
         super().__init__()
 
         self.port = port
@@ -43,7 +43,7 @@ class Serial(ThingSetBackend):
     def baud(self, _baud) -> None:
         self._baud = _baud
 
-    def get_message(self, timeout: float=0.5) -> Union[str, None]:
+    def get_message(self, timeout: float = 0.5) -> Union[str, None]:
         message = None
 
         try:
@@ -61,12 +61,16 @@ class Serial(ThingSetBackend):
 
         logger.debug(decoded)
 
-        if not decoded.startswith("thingset") and not decoded.startswith("uart") and not decoded.startswith("\x1b"):
+        if (
+            not decoded.startswith("thingset")
+            and not decoded.startswith("uart")
+            and not decoded.startswith("\x1b")
+        ):
             self._queue.put(decoded)
 
     def connect(self) -> None:
         if not self._serial:
-            self._serial = PySerial(self.port, self.baud, timeout=.1)
+            self._serial = PySerial(self.port, self.baud, timeout=0.1)
             self.start_receiving()
 
     def disconnect(self) -> None:
@@ -82,7 +86,7 @@ class Serial(ThingSetBackend):
 
 
 class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
-    def __init__(self, port: str="/dev/pts/5", baud=115200):
+    def __init__(self, port: str = "/dev/pts/5", baud=115200):
         super().__init__()
 
         self.backend = ThingSetBackend.Serial
@@ -96,7 +100,7 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
     def disconnect(self) -> None:
         self._serial.disconnect()
         self.is_connected = False
-    
+
     def _send(self, data: bytes, _: Union[int, None]) -> None:
         self._serial.send(data)
 

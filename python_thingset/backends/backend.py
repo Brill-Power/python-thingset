@@ -11,7 +11,7 @@ import can
 
 
 class ThingSetBackend(ABC):
-    CAN:    str = "can"
+    CAN: str = "can"
     Serial: str = "serial"
     Socket: str = "socket"
 
@@ -43,20 +43,20 @@ class ThingSetBackend(ABC):
 
     @abstractmethod
     def connect(self) -> None:
-        """ perform backend initialisation """
+        """perform backend initialisation"""
         pass
 
     @abstractmethod
     def disconnect(self) -> None:
-        """ perform backend teardown """
+        """perform backend teardown"""
         pass
 
     @abstractmethod
     def send(self, _data: Union[bytes, can.Message]) -> None:
-        """ send data """
+        """send data"""
         pass
 
     @abstractmethod
     def receive(self) -> Union[bytes, can.Message]:
-        """ receive data """
+        """receive data"""
         pass

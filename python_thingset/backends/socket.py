@@ -27,12 +27,12 @@ class Sock(ThingSetBackend):
     @property
     def address(self) -> str:
         return self._address
-    
+
     @address.setter
     def address(self, _address) -> None:
         self._address = _address
 
-    def get_message(self, timeout: float=0.5) -> Union[bytes, None]:
+    def get_message(self, timeout: float = 0.5) -> Union[bytes, None]:
         message = None
         try:
             message = self._queue.get(timeout=timeout)
@@ -66,7 +66,7 @@ class Sock(ThingSetBackend):
 
 
 class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
-    def __init__(self, address: str="192.0.2.1"):
+    def __init__(self, address: str = "192.0.2.1"):
         super().__init__()
 
         self.backend = ThingSetBackend.Socket
@@ -89,7 +89,7 @@ class ThingSetSock(ThingSetClient, ThingSetBinaryEncoder):
     @property
     def address(self) -> str:
         return self._address
-    
+
     @address.setter
     def address(self, _address) -> None:
         self._address = _address
