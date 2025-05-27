@@ -27,7 +27,7 @@ class ThingSetTextEncoder(object):
         return f"thingset ?{value_id}\n".encode()
 
     def encode_exec(self, value_id: str, args: Union[Any, None]) -> bytes:
-        """ properly format strings for transmission, add args to stringified list """
+        """properly format strings for transmission, add args to stringified list"""
         processed_args = "["
 
         """ leave numeric values as is, surround strings with escape chars """
@@ -51,9 +51,9 @@ class ThingSetTextEncoder(object):
         processed_args += "]"
 
         return f"""thingset !{value_id} {processed_args}\n""".encode()
-    
+
     def encode_update(self, parent_id: None, value_id: str, value: Any) -> bytes:
-        """ properly format strings for transmission, add args to stringified list """
+        """properly format strings for transmission, add args to stringified list"""
         value = value[0]
 
         val = None

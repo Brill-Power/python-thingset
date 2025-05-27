@@ -36,7 +36,9 @@ def process_args(args: list) -> list:
     return processed_args
 
 
-def get_schema(ts: ThingSet, object_id: Union[int, str], node_id: Union[int, None]=None):
+def get_schema(
+    ts: ThingSet, object_id: Union[int, str], node_id: Union[int, None] = None
+):
     if node_id is not None:
         child_ids = ts.fetch(object_id, [], node_id)
 
@@ -49,15 +51,14 @@ def get_schema(ts: ThingSet, object_id: Union[int, str], node_id: Union[int, Non
         child_ids = ts.fetch("" if object_id == "00" else object_id, [])
 
         for val in child_ids.values:
-
             for v in val.value:
-                print(f'{object_id if object_id != "00" else ""}/{v}')
+                print(f"{object_id if object_id != '00' else ''}/{v}")
 
                 """ avoid <wrn> shell_uart: RX ring buffer full """
                 sleep(0.005)
 
                 if object_id != "00":
-                    get_schema(ts, f'{object_id}/{v}')
+                    get_schema(ts, f"{object_id}/{v}")
                 else:
                     get_schema(ts, v)
 
@@ -70,45 +71,106 @@ def setup_args() -> argparse.Namespace:
     group = parent_parser.add_mutually_exclusive_group(required=True)
 
     """ CAN options """
-    group.add_argument("-c", "--can-bus", help="Specify which CAN bus to use (example: vcan0)",
-                       nargs="?", type=str)
-    parent_parser.add_argument("-t", "--target-address", help="Specify target device node address (example: 2F)")
+    group.add_argument(
+        "-c",
+        "--can-bus",
+        help="Specify which CAN bus to use (example: vcan0)",
+        nargs="?",
+        type=str,
+    )
+    parent_parser.add_argument(
+        "-t",
+        "--target-address",
+        help="Specify target device node address (example: 2F)",
+    )
 
     """ Serial options """
-    group.add_argument("-p", "--port", help="Specify which serial port to use (example: /dev/pts/5)",
-                       nargs="?", type=str)
-    parent_parser.add_argument("-r", "--baud-rate", help="Specify serial baud rate (example: 115200)",
-                               nargs="?", default=115200, type=int)
-    
+    group.add_argument(
+        "-p",
+        "--port",
+        help="Specify which serial port to use (example: /dev/pts/5)",
+        nargs="?",
+        type=str,
+    )
+    parent_parser.add_argument(
+        "-r",
+        "--baud-rate",
+        help="Specify serial baud rate (example: 115200)",
+        nargs="?",
+        default=115200,
+        type=int,
+    )
+
     """ Socket options """
-    group.add_argument("-i", "--ip", help="Specify which IPv4 address to connect to (example 192.0.2.1)")
+    group.add_argument(
+        "-i",
+        "--ip",
+        help="Specify which IPv4 address to connect to (example 192.0.2.1)",
+    )
 
     """ Functions """
-    subparsers = arg_parser.add_subparsers(dest="method", required=True, help="ThingSet function execute " \
-                                           "(one of: exec, fetch, get, update, schema)")
+    subparsers = arg_parser.add_subparsers(
+        dest="method",
+        required=True,
+        help="ThingSet function execute (one of: exec, fetch, get, update, schema)",
+    )
 
-    get_parser = subparsers.add_parser("get", help="Perform ThingSet get request", parents=[parent_parser])
-    get_parser.add_argument("id", help="Path or ID of value to retreive (example Build/rBoard, or F03)")
+    get_parser = subparsers.add_parser(
+        "get", help="Perform ThingSet get request", parents=[parent_parser]
+    )
+    get_parser.add_argument(
+        "id", help="Path or ID of value to retreive (example Build/rBoard, or F03)"
+    )
 
-    fetch_parser = subparsers.add_parser("fetch", parents=[parent_parser], help="Perform ThingSet fetch request")
-    fetch_parser.add_argument("parent_id", help="Path or ID for parent node of value(s) to retrieve (example: Build)")
-    fetch_parser.add_argument("value_ids", help="Paths or IDs (space delimited) for values to retrieve (example: rBoard " \
-                              "rBuildUser or F03 F02 or can be empty)", nargs="*")
+    fetch_parser = subparsers.add_parser(
+        "fetch", parents=[parent_parser], help="Perform ThingSet fetch request"
+    )
+    fetch_parser.add_argument(
+        "parent_id",
+        help="Path or ID for parent node of value(s) to retrieve (example: Build)",
+    )
+    fetch_parser.add_argument(
+        "value_ids",
+        help="Paths or IDs (space delimited) for values to retrieve (example: rBoard "
+        "rBuildUser or F03 F02 or can be empty)",
+        nargs="*",
+    )
 
-    exec_parser = subparsers.add_parser("exec", parents=[parent_parser], help="Perform ThingSet exec request")
-    exec_parser.add_argument("value_id", help="Path or ID of function to execute (example: Module/xSaveNVM or 5F)")
-    exec_parser.add_argument("values", help="Arguments to function (space delimited) (example: let-me-in or 24.6 " \
-                             "or can be empty) (numeric values should be decimal)", nargs="*")
+    exec_parser = subparsers.add_parser(
+        "exec", parents=[parent_parser], help="Perform ThingSet exec request"
+    )
+    exec_parser.add_argument(
+        "value_id",
+        help="Path or ID of function to execute (example: Module/xSaveNVM or 5F)",
+    )
+    exec_parser.add_argument(
+        "values",
+        help="Arguments to function (space delimited) (example: let-me-in or 24.6 "
+        "or can be empty) (numeric values should be decimal)",
+        nargs="*",
+    )
 
-    update_parser = subparsers.add_parser("update", parents=[parent_parser], help="Perform ThingSet update request")
-    update_parser.add_argument("update_args", help="If using -p/--port: path value - Path of value to update (example: " \
-                               "Module/sCanMaxLogLevel 3) (value is decimal if numeric). If using -c/--can-bus: " \
-                               "parent_id value_id value - (example: 0F F02 MyValue)", nargs="*")
+    update_parser = subparsers.add_parser(
+        "update", parents=[parent_parser], help="Perform ThingSet update request"
+    )
+    update_parser.add_argument(
+        "update_args",
+        help="If using -p/--port: path value - Path of value to update (example: "
+        "Module/sCanMaxLogLevel 3) (value is decimal if numeric). If using -c/--can-bus: "
+        "parent_id value_id value - (example: 0F F02 MyValue)",
+        nargs="*",
+    )
 
-    schema_parser = subparsers.add_parser("schema", parents=[parent_parser], help="Get ThingSet schema for device")
-    schema_parser.add_argument("root_id", help="Path or ID of node at which to start schema fetch (example: Module or 0F) " \
-                               "(\"\" or 00 for root path) (leave empty to fetch full schema)",
-                               nargs="?", default="00")
+    schema_parser = subparsers.add_parser(
+        "schema", parents=[parent_parser], help="Get ThingSet schema for device"
+    )
+    schema_parser.add_argument(
+        "root_id",
+        help="Path or ID of node at which to start schema fetch (example: Module or 0F) "
+        '("" or 00 for root path) (leave empty to fetch full schema)',
+        nargs="?",
+        default="00",
+    )
 
     args = arg_parser.parse_args()
 
@@ -119,8 +181,10 @@ def setup_args() -> argparse.Namespace:
 
         if args.method == "update":
             if len(args.update_args) != 3:
-                arg_parser.error("When using update with -c/--can-bus you must suply a parent_id, value_id and value " \
-                                "(example: thingset update f f03 MyValue -c vcan0")
+                arg_parser.error(
+                    "When using update with -c/--can-bus you must suply a parent_id, value_id and value "
+                    "(example: thingset update f f03 MyValue -c vcan0"
+                )
             else:
                 args.parent_id = args.update_args[0]
                 args.value_id = args.update_args[1]
@@ -130,8 +194,10 @@ def setup_args() -> argparse.Namespace:
     elif args.port:
         if args.method == "update":
             if len(args.update_args) != 2:
-                arg_parser.error("When using update with -p/--port you must suply a path and a value (example: " \
-                                "thingset update Module/sCanMaxLogLevel 4 -p /dev/pts/5")
+                arg_parser.error(
+                    "When using update with -p/--port you must suply a path and a value (example: "
+                    "thingset update Module/sCanMaxLogLevel 4 -p /dev/pts/5"
+                )
             else:
                 args.parent_id = args.update_args[0]
                 args.value = [args.update_args[1]]
@@ -142,8 +208,10 @@ def setup_args() -> argparse.Namespace:
 
         if args.method == "update":
             if len(args.update_args) != 3:
-                arg_parser.error("When using update with -i/--ip you must suply a parent_id, value_id and value " \
-                                "(example: thingset update f f03 MyValue -i 192.0.2.1")
+                arg_parser.error(
+                    "When using update with -i/--ip you must suply a parent_id, value_id and value "
+                    "(example: thingset update f f03 MyValue -i 192.0.2.1"
+                )
             else:
                 args.parent_id = args.update_args[0]
                 args.value_id = args.update_args[1]
@@ -173,9 +241,15 @@ def run_cli():
                 if args.backend.lower() == "serial":
                     response = ts.fetch(args.parent_id, args.value_ids)
                 elif args.backend.lower() == "socket":
-                    response = ts.fetch(int(args.parent_id, 16), [int(i, 16) for i in args.value_ids])
+                    response = ts.fetch(
+                        int(args.parent_id, 16), [int(i, 16) for i in args.value_ids]
+                    )
                 else:
-                    response = ts.fetch(int(args.parent_id, 16), [int(i, 16) for i in args.value_ids], int(args.target_address, 16))
+                    response = ts.fetch(
+                        int(args.parent_id, 16),
+                        [int(i, 16) for i in args.value_ids],
+                        int(args.target_address, 16),
+                    )
             case "exec":
                 p_args = process_args(args.values)
 
@@ -184,16 +258,29 @@ def run_cli():
                 elif args.backend.lower() == "socket":
                     response = ts.exec(int(args.value_id, 16), p_args)
                 else:
-                    response = ts.exec(int(args.value_id, 16), p_args, node_id=int(args.target_address, 16))
+                    response = ts.exec(
+                        int(args.value_id, 16),
+                        p_args,
+                        node_id=int(args.target_address, 16),
+                    )
             case "update":
                 if args.backend.lower() == "serial":
                     response = ts.update(args.parent_id, args.value)
                 elif args.backend.lower() == "socket":
                     p_args = process_args(args.value)
-                    response = ts.update(int(args.value_id, 16), p_args[0], parent_id=int(args.parent_id, 16))
+                    response = ts.update(
+                        int(args.value_id, 16),
+                        p_args[0],
+                        parent_id=int(args.parent_id, 16),
+                    )
                 else:
                     p_args = process_args(args.value)
-                    response = ts.update(int(args.value_id, 16), p_args[0], int(args.target_address, 16), int(args.parent_id, 16))
+                    response = ts.update(
+                        int(args.value_id, 16),
+                        p_args[0],
+                        int(args.target_address, 16),
+                        int(args.parent_id, 16),
+                    )
             case "schema":
                 if args.backend.lower() == "serial":
                     get_schema(ts, args.root_id)

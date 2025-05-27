@@ -56,11 +56,11 @@ class CAN(ThingSetBackend):
         self._fd = _fd
 
     def attach_rx_filter(self, id: int, mask: int, callback: Callable) -> None:
-        self._rx_filters.append({'id': id, 'mask': mask, 'callback': callback})
+        self._rx_filters.append({"id": id, "mask": mask, "callback": callback})
 
     def remove_rx_filter(self, id: int) -> None:
         for i, f in enumerate(self._rx_filters):
-            if f['id'] == id:
+            if f["id"] == id:
                 self._rx_filters.pop(i)
 
     def remove_all_rx_filters(self) -> None:
@@ -68,8 +68,8 @@ class CAN(ThingSetBackend):
 
     def _handle_message(self, message: can.Message) -> None:
         for f in self._rx_filters:
-            if message.arbitration_id & f['mask'] == f['id'] & f['mask']:
-                f['callback'](message)
+            if message.arbitration_id & f["mask"] == f["id"] & f["mask"]:
+                f["callback"](message)
 
     def connect(self) -> None:
         if not self._can:
@@ -132,10 +132,13 @@ class ISOTP(ThingSetBackend):
         self._tx_id = _id
 
     def set_address(self) -> None:
-        self._address = isotp.Address(addressing_mode=isotp.AddressingMode.Normal_29bits,
-                                      rxid=self.rx_id, txid=self.tx_id)
+        self._address = isotp.Address(
+            addressing_mode=isotp.AddressingMode.Normal_29bits,
+            rxid=self.rx_id,
+            txid=self.tx_id,
+        )
 
-    def get_message(self, timeout: float=1.0) -> Union[bytes, None]:
+    def get_message(self, timeout: float = 1.0) -> Union[bytes, None]:
         message = None
 
         try:
@@ -160,7 +163,7 @@ class ISOTP(ThingSetBackend):
         self._sock.close()
 
     def send(self, _data: bytes) -> None:
-        """ We have recursive calls to self.send here as we can't easily tell when the CAN
+        """We have recursive calls to self.send here as we can't easily tell when the CAN
         device is busy from another program (which is entirely possible)
 
         So we just retry up to 10 times - with a timeout of 100ms this equates to 1 second
@@ -191,11 +194,13 @@ class ISOTP(ThingSetBackend):
 
 class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
     ADDR_CLAIM_TIMEOUT_MS: int = 500
-    CONNECT_TIMEOUT_MS:    int = 10000
+    CONNECT_TIMEOUT_MS: int = 10000
 
     EUI: list = [0xDE, 0xAD, 0xBE, 0xEF, 0xC0, 0xFF, 0xEE, 0xEE]
 
-    def __init__(self, bus: str, addr: int = 0x00, source_bus: int=0x00, target_bus: int=0x00):
+    def __init__(
+        self, bus: str, addr: int = 0x00, source_bus: int = 0x00, target_bus: int = 0x00
+    ):
         super().__init__()
 
         self.backend = ThingSetBackend.CAN
@@ -229,8 +234,12 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
 
     def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID]:
         return (
-            ThingSetID.generate_req_resp_id(self.node_addr, node_id, self.source_bus, self.target_bus),
-            ThingSetID.generate_req_resp_id(node_id, self.node_addr, self.source_bus, self.target_bus)
+            ThingSetID.generate_req_resp_id(
+                self.node_addr, node_id, self.source_bus, self.target_bus
+            ),
+            ThingSetID.generate_req_resp_id(
+                node_id, self.node_addr, self.source_bus, self.target_bus
+            ),
         )
 
     def _negotiate_address(self, desired_addr: int, timeout=5000) -> None:
@@ -241,9 +250,13 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
 
         logger.debug(f"Attempting to claim node address 0x{desired_addr:02X}")
 
-        self._can.attach_rx_filter(claim_id.id, ThingSetID.ADDR_CLAIM_MASK, self._address_claim_handler)
+        self._can.attach_rx_filter(
+            claim_id.id, ThingSetID.ADDR_CLAIM_MASK, self._address_claim_handler
+        )
         self._can.send(can.Message(arbitration_id=disco_id.id, is_fd=self._can.fd))
-        self._addr_claim_timer = threading.Timer(0.5, self._address_claim_complete, args=(disco_id.target_addr,))
+        self._addr_claim_timer = threading.Timer(
+            0.5, self._address_claim_complete, args=(disco_id.target_addr,)
+        )
         self._addr_claim_timer.start()
 
     def _address_claim_handler(self, message: can.Message) -> None:
@@ -251,7 +264,9 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
             taken_addr = ThingSetID.get_source_addr_from_id(message.arbitration_id)
 
             self._addr_claim_timer.cancel()
-            self._can.remove_rx_filter(message.arbitration_id & ThingSetID.ADDR_CLAIM_MASK)
+            self._can.remove_rx_filter(
+                message.arbitration_id & ThingSetID.ADDR_CLAIM_MASK
+            )
             self._taken_node_addrs.append(taken_addr)
 
             logger.debug(f"Address 0x{taken_addr:02X} is in use by another node...")
@@ -261,21 +276,46 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
                     self._negotiate_address(new_addr)
                     return None
 
-            raise IOError(f"All addresses within range 0x{ThingSetID.MIN_ADDR:02X} to 0x{ThingSetID.MAX_ADDR:02X} are taken")
+            raise IOError(
+                f"All addresses within range 0x{ThingSetID.MIN_ADDR:02X} to 0x{ThingSetID.MAX_ADDR:02X} are taken"
+            )
         else:
-            logger.debug(f"Device tried to claim this nodes address 0x{self.node_addr:02X}, sending claim frame")
-            self._can.send(can.Message(arbitration_id=ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id,
-                                       data=self.EUI, is_fd=self._can.fd))
+            logger.debug(
+                f"Device tried to claim this nodes address 0x{self.node_addr:02X}, sending claim frame"
+            )
+            self._can.send(
+                can.Message(
+                    arbitration_id=ThingSetID.generate_claim_id(
+                        self.node_addr, 0x00, 0x00
+                    ).id,
+                    data=self.EUI,
+                    is_fd=self._can.fd,
+                )
+            )
 
     def _address_claim_complete(self, *args: tuple) -> None:
         self.is_connected = True
         self.node_addr = args[0]
         self._taken_node_addrs = []
 
-        self._can.remove_rx_filter(ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id & ThingSetID.ADDR_CLAIM_MASK)
-        self._can.attach_rx_filter(ThingSetID.generate_discovery_id(self.node_addr).id, 0xFF00FF00, self._address_claim_handler)
-        self._can.send(can.Message(arbitration_id=ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id,
-                                   data=self.EUI, is_fd=self._can.fd))
+        self._can.remove_rx_filter(
+            ThingSetID.generate_claim_id(self.node_addr, 0x00, 0x00).id
+            & ThingSetID.ADDR_CLAIM_MASK
+        )
+        self._can.attach_rx_filter(
+            ThingSetID.generate_discovery_id(self.node_addr).id,
+            0xFF00FF00,
+            self._address_claim_handler,
+        )
+        self._can.send(
+            can.Message(
+                arbitration_id=ThingSetID.generate_claim_id(
+                    self.node_addr, 0x00, 0x00
+                ).id,
+                data=self.EUI,
+                is_fd=self._can.fd,
+            )
+        )
 
         logger.debug(f"Claimed node address 0x{self.node_addr:02X}")
 

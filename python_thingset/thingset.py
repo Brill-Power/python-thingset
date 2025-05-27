@@ -13,10 +13,19 @@ from .response import ThingSetResponse
 
 
 class ThingSet(object):
-    def __init__(self, backend: str="can", can_bus: str="vcan0", can_addr: int=0x00, init_block: bool=True,
-                 source_bus: int=0x00, target_bus: int=0x00, port: str="/dev/pts/5", baud: int=115200,
-                 ip_addr: str="192.0.2.1") -> "ThingSet":
-        """ Constructor for ThingSet object
+    def __init__(
+        self,
+        backend: str = "can",
+        can_bus: str = "vcan0",
+        can_addr: int = 0x00,
+        init_block: bool = True,
+        source_bus: int = 0x00,
+        target_bus: int = 0x00,
+        port: str = "/dev/pts/5",
+        baud: int = 115200,
+        ip_addr: str = "192.0.2.1",
+    ) -> "ThingSet":
+        """Constructor for ThingSet object
 
         Args:
             backend: communications backend to use - one of `'can'` or `'serial'`
@@ -37,7 +46,9 @@ class ThingSet(object):
 
         match backend.lower():
             case ThingSetBackend.CAN:
-                self.backend = ThingSetCAN(can_bus, can_addr, source_bus=source_bus, target_bus=target_bus)
+                self.backend = ThingSetCAN(
+                    can_bus, can_addr, source_bus=source_bus, target_bus=target_bus
+                )
             case ThingSetBackend.Serial:
                 self.backend = ThingSetSerial(port, baud)
             case ThingSetBackend.Socket:
@@ -52,7 +63,7 @@ class ThingSet(object):
                 pass
 
     def disconnect(self) -> None:
-        """ Initiate disconnection from communications backend
+        """Initiate disconnection from communications backend
 
         Args:
             None
@@ -64,8 +75,13 @@ class ThingSet(object):
         if self.backend is not None:
             return self.backend.disconnect()
 
-    def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None) -> ThingSetResponse:
-        """ Perform a ThingSet fetch request
+    def fetch(
+        self,
+        parent_id: Union[int, str],
+        ids: List[Union[int, str]],
+        node_id: Union[int, None] = None,
+    ) -> ThingSetResponse:
+        """Perform a ThingSet fetch request
 
         Args:
             parent_id: id of (CAN), or path to (serial), parent group
@@ -79,8 +95,10 @@ class ThingSet(object):
         if self.backend is not None:
             return self.backend.fetch(parent_id, ids, node_id)
 
-    def get(self, value_id: Union[int, str], node_id: Union[int, None]=None) -> ThingSetResponse:
-        """ Perform a ThingSet get request
+    def get(
+        self, value_id: Union[int, str], node_id: Union[int, None] = None
+    ) -> ThingSetResponse:
+        """Perform a ThingSet get request
 
         Args:
             value_id: id of (CAN), or path to (serial), value to retrieve
@@ -93,8 +111,13 @@ class ThingSet(object):
         if self.backend is not None:
             return self.backend.get(value_id, node_id)
 
-    def exec(self, value_id: Union[int, str], args: Union[List[Any], None], node_id: Union[int, None]=None) -> ThingSetResponse:
-        """ Perform a ThingSet exec request
+    def exec(
+        self,
+        value_id: Union[int, str],
+        args: Union[List[Any], None],
+        node_id: Union[int, None] = None,
+    ) -> ThingSetResponse:
+        """Perform a ThingSet exec request
 
         Args:
             value_id: id of (CAN), or path to (serial), function to execute
@@ -108,8 +131,14 @@ class ThingSet(object):
         if self.backend is not None:
             return self.backend.exec(value_id, args, node_id)
 
-    def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
-        """ Perform a ThingSet update request
+    def update(
+        self,
+        value_id: Union[int, str],
+        value: Any,
+        node_id: Union[int, None] = None,
+        parent_id: Union[int, None] = None,
+    ) -> ThingSetResponse:
+        """Perform a ThingSet update request
 
         Args:
             value_id: id of (CAN), or path to (serial), value to update
