@@ -180,7 +180,7 @@ class ISOTP(ThingSetBackend):
             self._send_recurse_ctr += 1
             if self._send_recurse_ctr >= 10:
                 self._send_recurse_ctr = 0
-                logger.error(f"ISOTP transmission retry limit exceeded")
+                logger.error("ISOTP transmission retry limit exceeded")
                 return None
 
             self.send(_data)
