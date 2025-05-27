@@ -7,9 +7,11 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Union
 
 try:
+    from .backend import ThingSetBackend
     from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
     from .log import get_logger
 except ImportError:
+    from backend import ThingSetBackend
     from response import ThingSetResponse, ThingSetStatus, ThingSetValue
     from log import get_logger
 
@@ -29,10 +31,16 @@ class ThingSetClient(ABC):
         if tmp.status_code is not None:
             if tmp.status_code <= ThingSetStatus.CONTENT:
                 if len(ids) == 0:
-                    values.append(self._create_value(parent_id, node_id, tmp.data, get_paths))
+                    if self.backend == ThingSetBackend.Serial:
+                        values.append(ThingSetValue(None, tmp.data, parent_id))
+                    else:
+                        values.append(self._create_value(parent_id, node_id, tmp.data, get_paths))
                 else:
                     for idx, id in enumerate(ids):
-                        values.append(self._create_value(id, node_id, tmp.data[idx], get_paths))
+                        if self.backend == ThingSetBackend.Serial:
+                            values.append(ThingSetValue(None, tmp.data[idx], id))
+                        else:
+                            values.append(self._create_value(id, node_id, tmp.data[idx], get_paths))
 
         return ThingSetResponse(self.backend, msg, values)
 
@@ -46,7 +54,10 @@ class ThingSetClient(ABC):
 
         if tmp.status_code is not None:
             if tmp.status_code <= ThingSetStatus.CONTENT:
-                values.append(self._create_value(value_id, node_id, tmp.data, get_paths))
+                if self.backend == ThingSetBackend.Serial:
+                    values.append(ThingSetValue(None, tmp.data, value_id))
+                else:
+                    values.append(self._create_value(value_id, node_id, tmp.data, get_paths))
 
         return ThingSetResponse(self.backend, msg, values)
 
