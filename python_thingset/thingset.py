@@ -5,18 +5,11 @@
 #
 from typing import Any, List, Union
 
-try:
-    from .backend import ThingSetBackend
-    from .can_backend import ThingSetCAN
-    from .response import ThingSetResponse
-    from .serial_backend import ThingSetSerial
-    from .socket_backend import ThingSetSock
-except ImportError:
-    from backend import ThingSetBackend
-    from can_backend import ThingSetCAN
-    from response import ThingSetResponse
-    from serial_backend import ThingSetSerial
-    from socket_backend import ThingSetSock
+from .backends.backend import ThingSetBackend
+from .backends.can import ThingSetCAN
+from .backends.serial import ThingSetSerial
+from .backends.socket import ThingSetSock
+from .response import ThingSetResponse
 
 
 class ThingSet(object):

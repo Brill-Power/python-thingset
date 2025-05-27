@@ -8,16 +8,10 @@ from typing import Union
 
 from serial import Serial as PySerial
 
-try:
-    from .backend import ThingSetBackend
-    from .client import ThingSetClient
-    from .log import get_logger
-    from .text_encoder import ThingSetTextEncoder
-except ImportError:
-    from backend import ThingSetBackend
-    from client import ThingSetClient
-    from log import get_logger
-    from text_encoder import ThingSetTextEncoder
+from .backend import ThingSetBackend
+from ..client import ThingSetClient
+from ..encoders.text import ThingSetTextEncoder
+from ..log import get_logger
 
 
 logger = get_logger()

@@ -10,21 +10,15 @@ from typing import Callable, Tuple, Union
 import can
 import isotp
 
-try:
-    from .backend import ThingSetBackend
-    from .binary_encoder import ThingSetBinaryEncoder
-    from .client import ThingSetClient
-    from .id import ThingSetID
-    from .log import get_logger
-except ImportError:
-    from backend import ThingSetBackend
-    from binary_encoder import ThingSetBinaryEncoder
-    from client import ThingSetClient
-    from id import ThingSetID
-    from log import get_logger
+from .backend import ThingSetBackend
+from ..client import ThingSetClient
+from ..encoders.binary import ThingSetBinaryEncoder
+from ..id import ThingSetID
+from ..log import get_logger
 
 
 logger = get_logger()
+
 
 class CAN(ThingSetBackend):
     def __init__(self, bus: str, interface: str = "socketcan", fd=True):

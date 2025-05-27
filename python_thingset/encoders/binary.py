@@ -9,10 +9,7 @@ from typing import Any, List, Union
 
 import cbor2
 
-try:
-    from .response import ThingSetRequest
-except:
-    from response import ThingSetRequest
+from ..response import ThingSetRequest
 
 
 class ThingSetBinaryEncoder(object):
