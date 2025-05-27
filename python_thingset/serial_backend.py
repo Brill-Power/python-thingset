@@ -50,7 +50,7 @@ class Serial(ThingSetBackend):
     def baud(self, _baud) -> None:
         self._baud = _baud
 
-    def get_message(self, timeout: float) -> Union[str, None]:
+    def get_message(self, timeout: float=0.5) -> Union[str, None]:
         message = None
 
         try:
@@ -108,7 +108,7 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
 
     def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None) -> ThingSetResponse:
         self._serial.send(self.encode_fetch(parent_id, ids))
-        msg = self._serial.get_message(.5)
+        msg = self._serial.get_message()
 
         tmp = ThingSetResponse(self.backend, msg)
 
@@ -125,9 +125,9 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
 
         return ThingSetResponse(self.backend, msg, values)
 
-    def get(self, value_id: Union[int, str], node_id: Union[int, None]=None) -> ThingSetResponse:
+    def get(self, value_id: Union[int, str], node_id: Union[int, None]=None, get_paths: bool=False) -> ThingSetResponse:
         self._serial.send(self.encode_get(value_id))
-        msg = self._serial.get_message(.5)
+        msg = self._serial.get_message()
 
         tmp = ThingSetResponse(self.backend, msg)
 
@@ -138,18 +138,12 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
                 values.append(ThingSetValue(None, tmp.data, value_id))
 
         return ThingSetResponse(self.backend, msg, values)
+    
+    def _send(self, data: bytes, _: Union[int, None]) -> None:
+        self._serial.send(data)
 
-    def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
-        self._serial.send(self.encode_update(value_id, value))
-        msg = self._serial.get_message(0.5)
-
-        return ThingSetResponse(self.backend, msg)
-
-    def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
-        self._serial.send(self.encode_exec(value_id, args))
-        msg = self._serial.get_message(.5)
-
-        return ThingSetResponse(self.backend, msg)
+    def _recv(self) -> bytes:
+        self._serial.get_message()
 
     @property
     def port(self) -> str:

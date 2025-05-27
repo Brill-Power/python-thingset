@@ -172,7 +172,7 @@ def run_cli():
                 elif args.backend.lower() == "socket":
                     response = ts.get(int(args.id, 16))
                 else:
-                    response = ts.get(int(args.target_address, 16), int(args.id, 16))
+                    response = ts.get(int(args.id, 16), int(args.target_address, 16))
             case "fetch":
                 if args.backend.lower() == "serial":
                     response = ts.fetch(args.parent_id, args.value_ids)

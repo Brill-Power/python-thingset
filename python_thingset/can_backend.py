@@ -5,7 +5,7 @@
 #
 import queue
 import threading
-from typing import Any, Callable, List, Tuple, Union
+from typing import Callable, Tuple, Union
 
 import can
 import isotp
@@ -16,14 +16,12 @@ try:
     from .client import ThingSetClient
     from .id import ThingSetID
     from .log import get_logger
-    from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
 except ImportError:
     from backend import ThingSetBackend
     from binary_encoder import ThingSetBinaryEncoder
     from client import ThingSetClient
     from id import ThingSetID
     from log import get_logger
-    from response import ThingSetResponse, ThingSetStatus, ThingSetValue
 
 
 logger = get_logger()
@@ -207,7 +205,6 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         super().__init__()
 
         self.backend = ThingSetBackend.CAN
-        
         self.bus = bus
         self.node_addr = None
         self.source_bus = source_bus
@@ -218,7 +215,6 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
 
         self._can = CAN(self.bus)
         self._can.connect()
-
         self._negotiate_address(addr)
 
     def disconnect(self) -> None:
@@ -229,79 +225,13 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
 
         self._can.remove_all_rx_filters()
 
-    def fetch(self, parent_id: Union[int, str], ids: List[Union[int, str]], node_id: Union[int, None]=None, get_paths: bool=True) -> ThingSetResponse:
+    def _send(self, data: bytes, node_id: Union[int, None]) -> None:
         req_id, resp_id = self._get_isotp_ids(node_id)
+        self._isotp = ISOTP(self.bus, resp_id.id, req_id.id)
+        self._isotp.send(data)
 
-        i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(self.encode_fetch(parent_id, ids))
-        msg = i.get_message()
-
-        tmp = ThingSetResponse(self.backend, msg)
-
-        values = []
-
-        if tmp.status_code is not None:
-            if tmp.status_code <= ThingSetStatus.CONTENT:
-                """ create ThingSetValue for parent_id if we're getting its children, otherwise
-                create ThingSetValue for each id in ids
-                """
-                if len(ids) == 0:
-                    values.append(self._create_value(node_id, parent_id, tmp.data, get_paths))
-                else:
-
-                    for idx, id in enumerate(ids):
-                        values.append(self._create_value(node_id, id, tmp.data[idx], get_paths))
-
-        return ThingSetResponse(self.backend, msg, values)
-
-    def get(self, node_id: int, value_id: int, get_paths: bool=True) -> ThingSetResponse:
-        req_id, resp_id = self._get_isotp_ids(node_id)
-
-        i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(self.encode_get(value_id))
-        msg = i.get_message()
-
-        tmp = ThingSetResponse(self.backend, msg)
-
-        values = []
-
-        if tmp.status_code is not None:
-            if tmp.status_code <= ThingSetStatus.CONTENT:
-                values.append(self._create_value(node_id, value_id, tmp.data, get_paths))
-
-        return ThingSetResponse(self.backend, msg, values)
-
-    def exec(self, value_id: Union[int, str], args: Union[Any, None], node_id: Union[int, None]=None) -> ThingSetResponse:
-        req_id, resp_id = self._get_isotp_ids(node_id)
-
-        i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(self.encode_exec(value_id, args))
-        msg = i.get_message()
-
-        return ThingSetResponse(self.backend, msg)
-
-    def update(self, value_id: Union[int, str], value: Any, node_id: Union[int, None]=None, parent_id: Union[int, None]=None) -> ThingSetResponse:
-        req_id, resp_id = self._get_isotp_ids(node_id)
-
-        i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(self.encode_update(parent_id, value_id, value))
-        msg = i.get_message()
-
-        return ThingSetResponse(self.backend, msg)
-
-    def _create_value(self, node_id: int, value_id: int, value: Any, get_paths: bool=True) -> ThingSetValue:
-        return ThingSetValue(value_id, value, self._get_path(node_id, value_id) if get_paths else None)
-
-    def _get_path(self, node_id: int, value_id: int) -> str:
-        if value_id == ThingSetValue.ID_ROOT:
-            return "Root"
-
-        req_id, resp_id = self._get_isotp_ids(node_id)
-
-        i = ISOTP(self.bus, resp_id.id, req_id.id)
-        i.send(self.encode_get_path(value_id))
-
-        return ThingSetResponse(self.backend, i.get_message()).data[0]
+    def _recv(self) -> bytes:
+        return self._isotp.get_message()
 
     def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID]:
         return (
