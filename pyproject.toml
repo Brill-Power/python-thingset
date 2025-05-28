@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "python_thingset"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python library for ThingSet functionality"
 authors = [
     { name = "Adam Mitchell", email = "adam.mitchell@brillpower.com" }
@@ -30,3 +30,6 @@ dev = [
 homepage = "https://gitlab.io/Brill-Power/python-thingset/"
 repository = "https://gitlab.com/Brill-Power/python-thingset/"
 documentation = "https://gitlab.com/Brill-Power/python-thingset/"
+
+[project.scripts]
+thingset = "python_thingset.cli:run_cli"
