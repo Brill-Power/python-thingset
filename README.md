@@ -2,7 +2,7 @@
 
 ## To use from Python
 
-#### To install:
+### To install
 
 Simply include in your `requirements.txt` (or equivalent file) as:
 
@@ -16,8 +16,9 @@ If you wish to work from a specific branch, for example a branch called `fix-pac
 python_thingset @ git+https://github.com/Brill-Power/python-thingset.git@fix-package-imports
 ```
 
-#### To get a value:
-```
+### To get a value
+
+```python
 from python_thingset.thingset import ThingSet
 
 with ThingSet() as ts:
@@ -34,8 +35,9 @@ with ThingSet() as ts:
         print(v.name, f"0x{v.id:02X}", v.value)
 ```
 
-#### To fetch multiple values:
-```
+### To fetch multiple values
+
+```python
 from python_thingset.thingset import ThingSet
 
 with ThingSet() as ts:
@@ -52,8 +54,9 @@ with ThingSet() as ts:
         print(v.name, f"0x{v.id:02X}", v.value)
 ```
 
-#### To fetch all child IDs of a parent:
-```
+### To fetch all child IDs of a parent
+
+```python
 from python_thingset.thingset import ThingSet
 
 with ThingSet() as ts:
@@ -71,8 +74,9 @@ with ThingSet() as ts:
             print(v.name, f"0x{v.id:02X}", [f"0x{i:02X}" for i in v.value])
 ```
 
-#### To execute a function:
-```
+### To execute a function
+
+```python
 from python_thingset.thingset import ThingSet
 
 with ThingSet() as ts:
@@ -85,8 +89,9 @@ with ThingSet() as ts:
     print(response.data)
 ```
 
-#### To update a value:
-```
+### To update a value
+
+```python
 from python_thingset.thingset import ThingSet
 
 with ThingSet() as ts:
@@ -101,9 +106,9 @@ with ThingSet() as ts:
 
 ## To use from terminal
 
-#### To install:
+### To install
 
-```
+```bash
 1. git clone git@github.com:Brill-Power/python-thingset.git
 2. cd python_thingset
 3. pip install -r requirements.txt
@@ -113,7 +118,7 @@ with ThingSet() as ts:
 
 This will clone the latest version of the repository, make the file `thingset` executable and then add the directory containing the file `thingset` to your `PATH` such that it will be executable from any directory.
 
-#### Serial examples:
+### Serial examples
 
 ```
 thingset get SomeGroup -p /dev/pts/5
@@ -134,7 +139,7 @@ thingset schema SomeGroup -p /dev/pts/5
 thingset schema "" -p /dev/pts/5
 ```
 
-#### CAN examples:
+### CAN examples
 
 ```
 thingset get f -c vcan0 -t 2f
@@ -153,9 +158,9 @@ thingset schema -c vcan0 -t 2f
 thingset schema f -c vcan0 -t 2f
 ```
 
-#### Socket examples
+### Socket examples
 
-```
+```python
  if __name__ == "__main__":
     s = ThingSetSock("192.0.2.1")
 
