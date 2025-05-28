@@ -9,7 +9,7 @@ from typing import Union
 
 from .backend import ThingSetBackend
 from ..client import ThingSetClient
-from ..encoders.binary import ThingSetBinaryEncoder
+from ..encoders import ThingSetBinaryEncoder
 
 
 class Sock(ThingSetBackend):

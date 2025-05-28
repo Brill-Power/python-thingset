@@ -10,7 +10,7 @@ import argparse
 from time import sleep
 from typing import Union
 
-from .backends.backend import ThingSetBackend
+from .backends import ThingSetBackend
 from .thingset import ThingSet
 
 
