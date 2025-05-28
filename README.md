@@ -7,13 +7,13 @@
 Simply include in your `requirements.txt` (or equivalent file) as:
 
 ```
-python_thingset @ git+ssh://git@github.com:Brill-Power/python-thingset.git
+python_thingset @ git+https://github.com/Brill-Power/python-thingset.git
 ```
 
 If you wish to work from a specific branch, for example a branch called `fix-package-imports`, append `@fix-package-imports` to the above line in `requirements.txt`, as follows:
 
 ```
-python_thingset @ git+ssh://git@github.com:Brill-Power/python-thingset.git@fix-package-imports
+python_thingset @ git+https://github.com/Brill-Power/python-thingset.git@fix-package-imports
 ```
 
 #### To get a value:
