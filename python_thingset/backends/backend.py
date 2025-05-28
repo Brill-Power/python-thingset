@@ -11,22 +11,13 @@ import can
 
 
 class ThingSetBackend(ABC):
-    CAN:    str = "can"
+    CAN: str = "can"
     Serial: str = "serial"
+    Socket: str = "socket"
 
     def __init__(self):
         self._running = False
         self._thread = None
-
-        self.is_connected = False
-
-    @property
-    def is_connected(self) -> bool:
-        return self._is_connected
-
-    @is_connected.setter
-    def is_connected(self, _is_connected) -> None:
-        self._is_connected = _is_connected
 
     def start_receiving(self) -> None:
         if not self._running:
@@ -52,20 +43,20 @@ class ThingSetBackend(ABC):
 
     @abstractmethod
     def connect(self) -> None:
-        """ perform backend initialisation """
+        """perform backend initialisation"""
         pass
 
     @abstractmethod
     def disconnect(self) -> None:
-        """ perform backend teardown """
+        """perform backend teardown"""
         pass
 
     @abstractmethod
     def send(self, _data: Union[bytes, can.Message]) -> None:
-        """ send data """
+        """send data"""
         pass
 
     @abstractmethod
     def receive(self) -> Union[bytes, can.Message]:
-        """ receive data """
+        """receive data"""
         pass

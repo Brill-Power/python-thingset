@@ -9,36 +9,36 @@ from typing import Any, List, Union
 
 import cbor2
 
-from .backend import ThingSetBackend
+from .backends.backend import ThingSetBackend
 
 
 @dataclass
 class ThingSetStatus(object):
-    """ Dataclass to contain ThingSet status codes
+    """Dataclass to contain ThingSet status codes
     and their names plus utility functions
     """
 
-    CREATED:            int = 0x81
-    DELETED:            int = 0x82
-    CHANGED:            int = 0x84
-    CONTENT:            int = 0x85
-    BAD_REQUEST:        int = 0xA0
-    UNAUTHORISED:       int = 0xA1
-    FORBIDDEN:          int = 0xA3
-    NOT_FOUND:          int = 0xA4
-    NOT_ALLOWED:        int = 0xA5
+    CREATED: int = 0x81
+    DELETED: int = 0x82
+    CHANGED: int = 0x84
+    CONTENT: int = 0x85
+    BAD_REQUEST: int = 0xA0
+    UNAUTHORISED: int = 0xA1
+    FORBIDDEN: int = 0xA3
+    NOT_FOUND: int = 0xA4
+    NOT_ALLOWED: int = 0xA5
     REQUEST_INCOMPLETE: int = 0xA8
-    CONFLICT:           int = 0xA9
-    REQUEST_TOO_LARGE:  int = 0xAD
+    CONFLICT: int = 0xA9
+    REQUEST_TOO_LARGE: int = 0xAD
     UNSUPPORTED_FORMAT: int = 0xAF
-    INTERNAL_ERROR:     int = 0xC0
-    NOT_IMPLEMENTED:    int = 0xC1
-    GATEWAY_TIMEOUT:    int = 0xC4
-    NOT_GATEWAY:        int = 0xC5
+    INTERNAL_ERROR: int = 0xC0
+    NOT_IMPLEMENTED: int = 0xC1
+    GATEWAY_TIMEOUT: int = 0xC4
+    NOT_GATEWAY: int = 0xC5
 
     @staticmethod
     def status_code_name(code: int) -> Union[str, None]:
-        """ Get status code name from status code integer
+        """Get status code name from status code integer
 
         Args:
             code: an integer corresponding to a `ThingSetStatus` attribute
@@ -56,20 +56,20 @@ class ThingSetStatus(object):
 
 @dataclass
 class ThingSetRequest(object):
-    """ Dataclass to contain ThingSet request codes
+    """Dataclass to contain ThingSet request codes
     and their names plus utility functions
     """
 
-    GET:    int = 0x01
-    EXEC:   int = 0x02
+    GET: int = 0x01
+    EXEC: int = 0x02
     DELETE: int = 0x04
-    FETCH:  int = 0x05
+    FETCH: int = 0x05
     CREATE: int = 0x06
     UPDATE: int = 0x07
 
     @staticmethod
     def request_name(req: int) -> Union[str, None]:
-        """ Get request name from request integer
+        """Get request name from request integer
 
         Args:
             req: an integer corresponding to a `ThingSetRequest` attribute
@@ -152,8 +152,17 @@ class ThingSetValue(object):
 
 
 class ThingSetResponse(object):
-    def __init__(self, backend: str, data: Union[bytes, str, None], values: Union[List[ThingSetValue], None] = None):
-        self.backend = backend
+    MODE_BIN = 0x1
+    MODE_TXT = 0x2
+
+    def __init__(
+        self,
+        backend: str,
+        data: Union[bytes, str, None],
+        values: Union[List[ThingSetValue], None] = None,
+    ):
+        """mode is set based on type of backend; binary for CAN or sockets or text for serial"""
+        self.mode = backend
 
         self.status_code = None
         self.status_string = None
@@ -161,13 +170,13 @@ class ThingSetResponse(object):
         self.values = values
 
         if data is not None:
-            match self.backend:
-                case ThingSetBackend.CAN:
-                    self._process_can(data)
-                case ThingSetBackend.Serial:
-                    self._process_serial(data)
+            match self.mode:
+                case self.MODE_BIN:
+                    self._process_bin(data)
+                case self.MODE_TXT:
+                    self._process_txt(data)
                 case _:
-                    raise ValueError(f"Invalid backend ({backend}) specified")
+                    raise ValueError(f"Invalid mode ({self.mode}) specified")
 
     def __str__(self) -> str:
         code = None
@@ -177,7 +186,7 @@ class ThingSetResponse(object):
 
         return f"{code} ({self.status_string}): {self.data}"
 
-    def _process_serial(self, data: str) -> None:
+    def _process_txt(self, data: str) -> None:
         self._raw_data = data
         self._processed_data = data.split("\r\n")[0][4:]
 
@@ -190,7 +199,7 @@ class ThingSetResponse(object):
             except json.decoder.JSONDecodeError:
                 pass
 
-    def _process_can(self, data: bytes) -> None:
+    def _process_bin(self, data: bytes) -> None:
         self._raw_data = data
         self._processed_data = self._strip_null(self._raw_data)
 
@@ -204,17 +213,29 @@ class ThingSetResponse(object):
                 self.data = e
 
     def _get_status_byte(self, data: bytes) -> int:
-        match self.backend:
-            case ThingSetBackend.CAN:
+        match self.mode:
+            case self.MODE_BIN:
                 return data[0]
-            case ThingSetBackend.Serial:
+            case self.MODE_TXT:
                 try:
                     return int(data[1:3], 16)
                 except ValueError:
                     return None
 
     def _strip_null(self, data: bytes) -> bytes:
-        return data[1:].replace(b'\xf6', b'')
+        return data[1:].replace(b"\xf6", b"")
+
+    @property
+    def mode(self) -> int:
+        return self._mode
+
+    @mode.setter
+    def mode(self, _backend) -> None:
+        match _backend:
+            case ThingSetBackend.CAN | ThingSetBackend.Socket:
+                self._mode = self.MODE_BIN
+            case ThingSetBackend.Serial:
+                self._mode = self.MODE_TXT
 
     @property
     def status_code(self) -> int:
