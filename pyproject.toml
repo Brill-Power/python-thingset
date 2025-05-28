@@ -21,9 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "mkdocs==1.6.1",
-    "mkdocs-material==9.5.49",
-    "mkdocstrings-python==1.13.0"
+    "pytest==8.3.5"
 ]
 
 [project.urls]
