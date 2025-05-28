@@ -5,10 +5,7 @@
 #
 from typing import Any, List, Union
 
-from .backends.backend import ThingSetBackend
-from .backends.can import ThingSetCAN
-from .backends.serial import ThingSetSerial
-from .backends.socket import ThingSetSock
+from .backends import ThingSetBackend, ThingSetCAN, ThingSetSerial, ThingSetSock
 from .response import ThingSetResponse
 
 

@@ -10,7 +10,7 @@ from serial import Serial as PySerial
 
 from .backend import ThingSetBackend
 from ..client import ThingSetClient
-from ..encoders.text import ThingSetTextEncoder
+from ..encoders import ThingSetTextEncoder
 from ..log import get_logger
 
 

@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, List, Union
 
-from .backends.backend import ThingSetBackend
+from .backends import ThingSetBackend
 from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
 from .log import get_logger
 
