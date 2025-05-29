@@ -35,7 +35,7 @@ class ThingSetTextEncoder(object):
             if isinstance(a, int):
                 processed_args += f"{a},"
                 continue
-            
+
             if isinstance(a, float):
                 processed_args += f"{a},"
                 continue
