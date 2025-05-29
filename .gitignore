@@ -18,4 +18,7 @@ __pycache__
 
 # build metadata / files
 *build
-python_thingset.egg-info
+*egg-info
+
+# test metadata
+.coverage
