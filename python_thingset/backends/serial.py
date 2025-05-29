@@ -105,7 +105,7 @@ class ThingSetSerial(ThingSetClient, ThingSetTextEncoder):
         self._serial.send(data)
 
     def _recv(self) -> bytes:
-        self._serial.get_message()
+        return self._serial.get_message()
 
     @property
     def port(self) -> str:
