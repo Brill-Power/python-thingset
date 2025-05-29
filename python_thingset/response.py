@@ -9,7 +9,7 @@ from typing import Any, List, Union
 
 import cbor2
 
-from .backends.backend import ThingSetBackend
+from .backends import ThingSetBackend
 
 
 @dataclass
