@@ -12,7 +12,7 @@ import isotp
 
 from .backend import ThingSetBackend
 from ..client import ThingSetClient
-from ..encoders.binary import ThingSetBinaryEncoder
+from ..encoders import ThingSetBinaryEncoder
 from ..id import ThingSetID
 from ..log import get_logger
 
