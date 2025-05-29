@@ -26,25 +26,19 @@ class ThingSetTextEncoder(object):
     def encode_get(self, value_id: str) -> bytes:
         return f"thingset ?{value_id}\n".encode()
 
-    def encode_exec(self, value_id: str, args: Union[Any, None]) -> bytes:
+    def encode_exec(self, value_id: str, args: List[Union[Any, None]]) -> bytes:
         """properly format strings for transmission, add args to stringified list"""
         processed_args = "["
 
         """ leave numeric values as is, surround strings with escape chars """
         for a in args:
-            try:
-                int(a)
+            if isinstance(a, int):
                 processed_args += f"{a},"
                 continue
-            except ValueError:
-                pass
-
-            try:
-                float(a)
+            
+            if isinstance(a, float):
                 processed_args += f"{a},"
                 continue
-            except ValueError:
-                pass
 
             processed_args += f'\\"{a}\\",'
 
@@ -58,16 +52,11 @@ class ThingSetTextEncoder(object):
 
         val = None
 
-        try:
+        if isinstance(value, int):
             val = int(value)
-        except ValueError:
-            pass
 
-        if val is None:
-            try:
-                val = float(value)
-            except ValueError:
-                pass
+        if isinstance(value, float):
+            val = float(value)
 
         if val is None:
             val = f'\\"{value}\\"'
