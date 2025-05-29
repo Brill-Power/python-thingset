@@ -28,7 +28,7 @@ class ThingSetBinaryEncoder(object):
           18 41        # CBOR uint: 0x41 (object ID)
     """
 
-    def encode_fetch(self, parent_id: int, value_ids: List[int]) -> bytes:
+    def encode_fetch(self, parent_id: int, value_ids: List[Union[int, None]]) -> bytes:
         req = bytearray()
         req.append(ThingSetRequest.FETCH)
         req += cbor2.dumps(parent_id, canonical=True)
@@ -43,7 +43,7 @@ class ThingSetBinaryEncoder(object):
     def encode_get(self, value_id: int) -> bytes:
         return bytes([ThingSetRequest.GET] + list(cbor2.dumps(value_id)))
 
-    def encode_exec(self, value_id: int, args: Union[Any, None]) -> bytes:
+    def encode_exec(self, value_id: int, args: List[Union[Any, None]]) -> bytes:
         p_args = list()
 
         for a in args:
