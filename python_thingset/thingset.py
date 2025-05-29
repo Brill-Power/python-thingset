@@ -12,20 +12,20 @@ from .response import ThingSetResponse
 class ThingSet(object):
     def __init__(
         self,
-        backend: str = "can",
+        backend: str = ThingSetBackend.Socket,
         can_bus: str = "vcan0",
         can_addr: int = 0x00,
         init_block: bool = True,
         source_bus: int = 0x00,
         target_bus: int = 0x00,
-        port: str = "/dev/pts/5",
+        port: str = "/dev/ttyACM0",
         baud: int = 115200,
-        ip_addr: str = "192.0.2.1",
+        ip_addr: str = "127.0.0.1",
     ) -> "ThingSet":
         """Constructor for ThingSet object
 
         Args:
-            backend: communications backend to use - one of `'can'` or `'serial'`
+            backend: communications backend to use - one of `'can'` or `'serial'` or `'socket'`
             can_bus: physical (or virtual) CAN device to use if using CAN backend
             can_addr: intended node address of this ThingSet CAN instance if using CAN backend
             init_block: whether to block during instantation whilst backend connects
