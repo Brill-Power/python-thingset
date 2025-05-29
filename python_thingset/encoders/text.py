@@ -10,7 +10,7 @@ class ThingSetTextEncoder(object):
     def __init__(self):
         pass
 
-    def encode_fetch(self, parent_id: int, ids: List[str]) -> bytes:
+    def encode_fetch(self, parent_id: str, ids: List[str]) -> bytes:
         children = "null"
 
         if len(ids) > 0:

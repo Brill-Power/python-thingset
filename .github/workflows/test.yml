@@ -27,4 +27,4 @@ jobs:
         pip install .[dev]
     - name: Test with pytest
       run: |
-        pytest tests/
+        python -m pytest tests/ --cov --cov-report term-missing
