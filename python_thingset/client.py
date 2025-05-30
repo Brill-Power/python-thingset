@@ -15,6 +15,11 @@ logger = get_logger()
 
 
 class ThingSetClient(ABC):
+    """_summary_
+
+    Args:
+        ABC (_type_): _description_
+    """
     def fetch(
         self,
         parent_id: Union[int, str],
@@ -22,18 +27,16 @@ class ThingSetClient(ABC):
         node_id: Union[int, None] = None,
         get_paths: bool = True,
     ) -> ThingSetResponse:
-        """Performs a FETCH request
+        """_summary_
 
-        :param parent_id: a
-        :type parent_id: Union[int, str]
-        :param ids: b
-        :type ids: List[Union[int, str]]
-        :param node_id: c
-        :type node_id: Union[int, None], optional
-        :param get_paths: d
-        :type get_paths: bool, optional
-        :return: e
-        :rtype: ThingSetResponse
+        Args:
+            parent_id (Union[int, str]): _description_
+            ids (List[Union[int, str]]): _description_
+            node_id (Union[int, None], optional): _description_. Defaults to None.
+            get_paths (bool, optional): _description_. Defaults to True.
+
+        Returns:
+            ThingSetResponse: _description_
         """
         values = []
 
@@ -70,6 +73,16 @@ class ThingSetClient(ABC):
         node_id: Union[int, None] = None,
         get_paths: bool = True,
     ) -> ThingSetResponse:
+        """_summary_
+
+        Args:
+            value_id (Union[int, str]): _description_
+            node_id (Union[int, None], optional): _description_. Defaults to None.
+            get_paths (bool, optional): _description_. Defaults to True.
+
+        Returns:
+            ThingSetResponse: _description_
+        """
         values = []
 
         self._send(self.encode_get(value_id), node_id)
@@ -95,6 +108,17 @@ class ThingSetClient(ABC):
         node_id: Union[int, None] = None,
         parent_id: Union[int, None] = None,
     ) -> ThingSetResponse:
+        """_summary_
+
+        Args:
+            value_id (Union[int, str]): _description_
+            value (Any): _description_
+            node_id (Union[int, None], optional): _description_. Defaults to None.
+            parent_id (Union[int, None], optional): _description_. Defaults to None.
+
+        Returns:
+            ThingSetResponse: _description_
+        """
         self._send(self.encode_update(parent_id, value_id, value), node_id)
         return ThingSetResponse(self.backend, self._recv())
 
@@ -104,6 +128,16 @@ class ThingSetClient(ABC):
         args: Union[List[Any], None],
         node_id: Union[int, None] = None,
     ) -> ThingSetResponse:
+        """_summary_
+
+        Args:
+            value_id (Union[int, str]): _description_
+            args (Union[List[Any], None]): _description_
+            node_id (Union[int, None], optional): _description_. Defaults to None.
+
+        Returns:
+            ThingSetResponse: _description_
+        """
         self._send(self.encode_exec(value_id, args), node_id)
         return ThingSetResponse(self.backend, self._recv())
 
@@ -128,14 +162,27 @@ class ThingSetClient(ABC):
 
     @abstractmethod
     def disconnect(self) -> None:
+        """_summary_
+        """
         pass
 
     @abstractmethod
     def _send(self, data: bytes, node_id: Union[int, None]) -> None:
+        """_summary_
+
+        Args:
+            data (bytes): _description_
+            node_id (Union[int, None]): _description_
+        """
         pass
 
     @abstractmethod
     def _recv(self) -> bytes:
+        """_summary_
+
+        Returns:
+            bytes: _description_
+        """
         pass
 
     @property
