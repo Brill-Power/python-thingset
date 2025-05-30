@@ -1,17 +1,22 @@
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
 
 [project]
 name = "python_thingset"
-version = "0.2.0"
+version = "0.2.2"
 description = "A Python library for ThingSet functionality"
 authors = [
     { name = "Adam Mitchell", email = "adam.mitchell@brillpower.com" }
 ]
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = [ "LICEN[CS]E*" ]
 readme = "README.md"
 requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "can-isotp==2.0.6",
     "cbor2==5.6.5",
@@ -27,9 +32,9 @@ dev = [
 ]
 
 [project.urls]
-homepage = "https://gitlab.io/Brill-Power/python-thingset/"
-repository = "https://gitlab.com/Brill-Power/python-thingset/"
-documentation = "https://gitlab.com/Brill-Power/python-thingset/"
+homepage = "https://github.com/Brill-Power/python-thingset"
+repository = "https://github.com/Brill-Power/python-thingset"
+documentation = "https://github.com/Brill-Power/python-thingset"
 
 [project.scripts]
 thingset = "python_thingset.cli:run_cli"
