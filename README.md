@@ -140,3 +140,10 @@ thingset exec 66 1.2 2.3 3.55 -i 127.0.0.1
 thingset schema -i 127.0.0.1
 thingset schema f -i 127.0.0.1
 ```
+
+## To build
+```
+rm -rf dist/
+python -m build
+python -m twine upload --repository pypi dist/*
+```
