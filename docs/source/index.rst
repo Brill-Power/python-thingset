@@ -1,6 +1,15 @@
-python_thingset
-===============
+Python ThingSet
+=====================================
 
-Hello, world!
+.. toctree::
+:maxdepth: 2
+:caption: Contents:
 
-Does this work in a PR?
+
+python_thingset module
+======================
+
+.. automodule:: python_thingset
+    :members:
+    :undoc-members:
+    :show-inheritance:
