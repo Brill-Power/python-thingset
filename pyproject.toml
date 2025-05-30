@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "python_thingset"
-version = "0.2.3"
+version = "0.2.4"
 description = "A Python library for ThingSet functionality"
 authors = [
     { name = "Adam Mitchell", email = "adam.mitchell@brillpower.com" }
@@ -32,9 +32,9 @@ dev = [
 ]
 
 [project.urls]
-homepage = "https://github.com/Brill-Power/python-thingset"
+homepage = "https://pypi.org/project/python-thingset/"
 repository = "https://github.com/Brill-Power/python-thingset"
-documentation = "https://github.com/Brill-Power/python-thingset"
+documentation = "https://python-thingset.readthedocs.io/en/latest/"
 
 [project.scripts]
 thingset = "python_thingset.cli:run_cli"
