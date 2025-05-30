@@ -22,6 +22,19 @@ class ThingSetClient(ABC):
         node_id: Union[int, None] = None,
         get_paths: bool = True,
     ) -> ThingSetResponse:
+        """Performs a FETCH request
+
+        :param parent_id: a
+        :type parent_id: Union[int, str]
+        :param ids: b
+        :type ids: List[Union[int, str]]
+        :param node_id: c
+        :type node_id: Union[int, None], optional
+        :param get_paths: d
+        :type get_paths: bool, optional
+        :return: e
+        :rtype: ThingSetResponse
+        """
         values = []
 
         self._send(self.encode_fetch(parent_id, ids), node_id)
