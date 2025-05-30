@@ -7,7 +7,7 @@ copyright = '2025'
 author = 'Adam Mitchell'
 
 release = '0.1'
-version = '0.1.0'
+version = '0.2.3'
 
 # -- General configuration
 
