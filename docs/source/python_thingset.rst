@@ -18,53 +18,53 @@ python\_thingset.cli module
 
 .. automodule:: python_thingset.cli
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 python\_thingset.client module
 ------------------------------
 
 .. automodule:: python_thingset.client
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 python\_thingset.id module
 --------------------------
 
 .. automodule:: python_thingset.id
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 python\_thingset.log module
 ---------------------------
 
 .. automodule:: python_thingset.log
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 python\_thingset.response module
 --------------------------------
 
 .. automodule:: python_thingset.response
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 python\_thingset.thingset module
 --------------------------------
 
 .. automodule:: python_thingset.thingset
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 Module contents
 ---------------
 
 .. automodule:: python_thingset
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
