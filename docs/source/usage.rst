@@ -1,5 +1,5 @@
-python-thingset
-===============
+Usage
+=====
 
 The **python-thingset** library implements Python client for the `ThingSet <https://thingset.io/>`_
 protocol. Binary mode is supported when using either the CAN or TCP/IP transports and text mode is
@@ -21,12 +21,3 @@ the string `native_posix` with the property identifier `0xF03` which is retrieve
    with ThingSet() as ts:
        response = ts.get(0xF03)
        print(response)                  # 0x85 (CONTENT): native_posix
-
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-   installation
-   usage
-   cli
