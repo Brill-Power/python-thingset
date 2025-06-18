@@ -223,7 +223,7 @@ class ThingSetResponse(object):
                     return None
 
     def _strip_null(self, data: bytes) -> bytes:
-        return data[1:].replace(b"\xf6", b"")
+        return data[1:].replace(b"\xf6", b"", 1)
 
     @property
     def mode(self) -> int:
