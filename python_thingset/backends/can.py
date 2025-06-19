@@ -138,7 +138,7 @@ class ISOTP(ThingSetBackend):
             txid=self.tx_id,
         )
 
-    def get_message(self, timeout: float = 1.0) -> Union[bytes, None]:
+    def get_message(self, timeout: float = 1.5) -> Union[bytes, None]:
         message = None
 
         try:
