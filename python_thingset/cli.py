@@ -226,7 +226,10 @@ def setup_args() -> argparse.Namespace:
 def run_cli():
     args = setup_args()
 
-    with ThingSet(can_bus=args.can_bus, backend=args.backend, port=args.port) as ts:
+    with ThingSet(can_bus=args.can_bus,
+              backend=args.backend,
+              port=args.port,
+              ip_addr=args.ip) as ts:
         response = None
 
         match args.method:
