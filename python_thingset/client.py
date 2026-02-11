@@ -20,7 +20,7 @@ class ThingSetClient(ABC):
         parent_id: Union[int, str],
         ids: List[Union[int, str]],
         node_id: Union[int, None] = None,
-        get_paths: bool = True,
+        get_paths: bool = False,
     ) -> ThingSetResponse:
         values = []
 
@@ -55,7 +55,7 @@ class ThingSetClient(ABC):
         self,
         value_id: Union[int, str],
         node_id: Union[int, None] = None,
-        get_paths: bool = True,
+        get_paths: bool = False,
     ) -> ThingSetResponse:
         values = []
 
