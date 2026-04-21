@@ -58,7 +58,7 @@ class _TcpLink(ThingSetTransport):
             del self._rx_buffer[:consumed]
             self._queue.put(response)
 
-    def get_response(self, timeout: float = 5.0) -> Union[ParsedResponse, None]:
+    def get_response(self, timeout: float = 0.5) -> Union[ParsedResponse, None]:
         try:
             msg = self._queue.get(timeout=timeout)
             self._queue.task_done()

@@ -61,9 +61,6 @@ class ThingSetProtocol:
     def encode_update(self, parent_id, value_id, value) -> bytes:
         return self._encoder.encode_update(parent_id, value_id, value)
 
-    def encode_get_path(self, value_id) -> bytes:
-        return self._encoder.encode_get_path(value_id)
-
     def parse_response(self, data: Union[bytes, str]) -> ParsedResponse:
         if self.wire_format is WireFormat.BINARY:
             return self._parse_binary(data)

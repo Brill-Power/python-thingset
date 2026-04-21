@@ -9,7 +9,9 @@ import argparse
 from time import sleep
 from typing import Union
 
+from ._protocol import WireFormat
 from .client import ThingSetClient
+from .response import ThingSetStatus
 from .transport import ThingSetCAN, ThingSetSerial, ThingSetTCP
 
 
@@ -40,28 +42,87 @@ def get_schema(
     object_id: Union[int, str],
     node_id: Union[int, None] = None,
 ):
-    if node_id is not None:
-        child_ids = ts.fetch(object_id, [], node_id)
-
-        for val in child_ids.values:
-            print(val)
-
-            for v in val.value:
-                get_schema(ts, v, node_id)
+    """Recursively print every child identifier under ``object_id``."""
+    if ts.wire_format is WireFormat.BINARY:
+        _schema_binary(ts, object_id, node_id)
     else:
-        child_ids = ts.fetch("" if object_id == "00" else object_id, [])
+        _schema_text(ts, object_id, node_id)
 
-        for val in child_ids.values:
-            for v in val.value:
-                print(f"{object_id if object_id != '00' else ''}/{v}")
 
-                # avoid <wrn> shell_uart: RX ring buffer full
-                sleep(0.005)
+# Binary ThingSet reserved overlay IDs used for schema discovery
+_METADATA_OVERLAY = 0x19
+_METADATA_KEY_NAME = 26  # 0x1A
+_METADATA_KEY_TYPE = 27  # 0x1B
+_METADATA_KEY_ACCESS = 28  # 0x1C
 
-                if object_id != "00":
-                    get_schema(ts, f"{object_id}/{v}")
-                else:
-                    get_schema(ts, v)
+
+def _schema_binary(
+    ts: ThingSetClient,
+    object_id: int,
+    node_id: Union[int, None],
+) -> None:
+    """Binary-transport schema walk using the metadata overlay.
+
+    Two round-trips per group: fetch the child ID list, then fetch
+    metadata for all children in one batched call. Metadata carries
+    name + type + access, so we know immediately which children are
+    groups (to recurse into) and which are leaves/functions/records
+    (terminal). No per-leaf probing and no ``get`` calls.
+    """
+    _walk_binary(ts, object_id, "", node_id)
+
+
+def _walk_binary(
+    ts: ThingSetClient,
+    group_id: int,
+    path_prefix: str,
+    node_id: Union[int, None],
+) -> None:
+    fresp = ts.fetch(group_id, [], node_id)
+    if not fresp.values:
+        return
+    child_ids = fresp.values[0].value
+    if not isinstance(child_ids, list) or not child_ids:
+        return
+
+    mresp = ts.fetch(_METADATA_OVERLAY, child_ids, node_id)
+    if mresp.status_code != ThingSetStatus.CONTENT or not mresp.values:
+        # Firmware doesn't support the metadata overlay — list IDs
+        # only, no recursion (we can't distinguish groups from leaves).
+        for cid in child_ids:
+            print(f"0x{cid:04X}")
+        return
+
+    for idx, cid in enumerate(child_ids):
+        md = mresp.values[idx].value if idx < len(mresp.values) else None
+        if not isinstance(md, dict):
+            print(f"0x{cid:04X}")
+            continue
+        name = md.get(_METADATA_KEY_NAME, "")
+        type_str = md.get(_METADATA_KEY_TYPE, "")
+        full_path = f"{path_prefix}/{name}" if path_prefix else name
+        print(f"0x{cid:04X}  {full_path}  ({type_str})")
+        if type_str == "group":
+            _walk_binary(ts, cid, full_path, node_id)
+
+
+def _schema_text(
+    ts: ThingSetClient,
+    object_id: str,
+    node_id: Union[int, None],
+) -> None:
+    """Text-transport schema walk — path-concatenated recursion."""
+    response = ts.fetch(object_id, [], node_id)
+    if not response.values:
+        return
+    for val in response.values:
+        children = val.value if isinstance(val.value, list) else []
+        for child in children:
+            display = child if object_id == "" else f"{object_id}/{child}"
+            print(display)
+            # avoid <wrn> shell_uart: RX ring buffer full on serial targets
+            sleep(0.005)
+            _schema_text(ts, display, node_id)
 
 
 def setup_args() -> argparse.Namespace:
@@ -282,7 +343,8 @@ def _dispatch(ts: ThingSetClient, args: argparse.Namespace):
 
         case "schema":
             if is_serial:
-                get_schema(ts, args.root_id)
+                root = "" if args.root_id == "00" else args.root_id
+                get_schema(ts, root)
             elif is_tcp:
                 get_schema(ts, int(args.root_id, 16))
             else:

@@ -7,11 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Union
 
 from ._protocol import ParsedResponse, ThingSetProtocol, WireFormat
-from .log import get_logger
 from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
-
-
-logger = get_logger()
 
 
 class ThingSetClient(ABC):
@@ -31,7 +27,6 @@ class ThingSetClient(ABC):
         parent_id: Union[int, str],
         ids: List[Union[int, str]],
         node_id: Union[int, None] = None,
-        get_paths: bool = False,
     ) -> ThingSetResponse:
         self._send(self._protocol.encode_fetch(parent_id, ids), node_id)
         parsed = self._recv()
@@ -43,14 +38,10 @@ class ThingSetClient(ABC):
             and parsed.status_code <= ThingSetStatus.CONTENT
         ):
             if len(ids) == 0:
-                values.append(
-                    self._build_value(parent_id, node_id, parsed.data, get_paths)
-                )
+                values.append(self._build_value(parent_id, parsed.data))
             else:
                 for idx, vid in enumerate(ids):
-                    values.append(
-                        self._build_value(vid, node_id, parsed.data[idx], get_paths)
-                    )
+                    values.append(self._build_value(vid, parsed.data[idx]))
 
         return self._to_response(parsed, values)
 
@@ -58,7 +49,6 @@ class ThingSetClient(ABC):
         self,
         value_id: Union[int, str],
         node_id: Union[int, None] = None,
-        get_paths: bool = False,
     ) -> ThingSetResponse:
         self._send(self._protocol.encode_get(value_id), node_id)
         parsed = self._recv()
@@ -69,7 +59,7 @@ class ThingSetClient(ABC):
             and parsed.status_code is not None
             and parsed.status_code <= ThingSetStatus.CONTENT
         ):
-            values.append(self._build_value(value_id, node_id, parsed.data, get_paths))
+            values.append(self._build_value(value_id, parsed.data))
 
         return self._to_response(parsed, values)
 
@@ -95,27 +85,12 @@ class ThingSetClient(ABC):
     def _build_value(
         self,
         value_id: Union[int, str],
-        node_id: Union[int, None],
         value: Any,
-        get_paths: bool,
     ) -> ThingSetValue:
         if self.wire_format is WireFormat.TEXT:
             # Text (serial) addresses values by path; the "id" IS the path
             return ThingSetValue(None, value, value_id)
-
-        path = None
-        if get_paths:
-            if value_id == ThingSetValue.ID_ROOT:
-                path = "Root"
-            else:
-                self._send(self._protocol.encode_get_path(value_id), node_id)
-                parsed = self._recv()
-                if parsed is not None and parsed.data is not None:
-                    path = parsed.data[0]
-                else:
-                    logger.warning("Failed to read value path")
-
-        return ThingSetValue(value_id, value, path)
+        return ThingSetValue(value_id, value, None)
 
     @staticmethod
     def _to_response(
