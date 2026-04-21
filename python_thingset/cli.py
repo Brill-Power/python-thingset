@@ -11,7 +11,6 @@ from typing import Union
 
 from ._protocol import WireFormat
 from .client import ThingSetClient
-from .response import ThingSetStatus
 from .transport import ThingSetCAN, ThingSetSerial, ThingSetTCP
 
 
@@ -49,61 +48,14 @@ def get_schema(
         _schema_text(ts, object_id, node_id)
 
 
-# Binary ThingSet reserved overlay IDs used for schema discovery
-_METADATA_OVERLAY = 0x19
-_METADATA_KEY_NAME = 26  # 0x1A
-_METADATA_KEY_TYPE = 27  # 0x1B
-_METADATA_KEY_ACCESS = 28  # 0x1C
-
-
 def _schema_binary(
     ts: ThingSetClient,
     object_id: int,
     node_id: Union[int, None],
 ) -> None:
-    """Binary-transport schema walk using the metadata overlay.
-
-    Two round-trips per group: fetch the child ID list, then fetch
-    metadata for all children in one batched call. Metadata carries
-    name + type + access, so we know immediately which children are
-    groups (to recurse into) and which are leaves/functions/records
-    (terminal). No per-leaf probing and no ``get`` calls.
-    """
-    _walk_binary(ts, object_id, "", node_id)
-
-
-def _walk_binary(
-    ts: ThingSetClient,
-    group_id: int,
-    path_prefix: str,
-    node_id: Union[int, None],
-) -> None:
-    fresp = ts.fetch(group_id, [], node_id)
-    if not fresp.values:
-        return
-    child_ids = fresp.values[0].value
-    if not isinstance(child_ids, list) or not child_ids:
-        return
-
-    mresp = ts.fetch(_METADATA_OVERLAY, child_ids, node_id)
-    if mresp.status_code != ThingSetStatus.CONTENT or not mresp.values:
-        # Firmware doesn't support the metadata overlay — list IDs
-        # only, no recursion (we can't distinguish groups from leaves).
-        for cid in child_ids:
-            print(f"0x{cid:04X}")
-        return
-
-    for idx, cid in enumerate(child_ids):
-        md = mresp.values[idx].value if idx < len(mresp.values) else None
-        if not isinstance(md, dict):
-            print(f"0x{cid:04X}")
-            continue
-        name = md.get(_METADATA_KEY_NAME, "")
-        type_str = md.get(_METADATA_KEY_TYPE, "")
-        full_path = f"{path_prefix}/{name}" if path_prefix else name
-        print(f"0x{cid:04X}  {full_path}  ({type_str})")
-        if type_str == "group":
-            _walk_binary(ts, cid, full_path, node_id)
+    tree = ts.discover_schema(root_id=object_id, node_id=node_id)
+    for node in tree:
+        print(node)
 
 
 def _schema_text(
