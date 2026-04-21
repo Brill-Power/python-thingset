@@ -20,6 +20,7 @@ from typing import Any, Tuple, Union
 import cbor2
 
 from .encoders import ThingSetBinaryEncoder, ThingSetTextEncoder
+from .report import ThingSetReport
 from .response import ThingSetStatus
 
 
@@ -37,6 +38,8 @@ class ParsedResponse:
 
 
 CBOR_NULL = 0xF6
+REPORT_TYPE_STANDARD = 0x1F
+REPORT_TYPE_ENHANCED = 0x1E
 
 
 class ThingSetProtocol:
@@ -65,6 +68,42 @@ class ThingSetProtocol:
         if self.wire_format is WireFormat.BINARY:
             return self._parse_binary(data)
         return self._parse_text(data)
+
+    def parse_report(self, payload: bytes) -> Union[ThingSetReport, None]:
+        """Parse a reassembled report payload (no UDP framing header).
+
+        Returns ``None`` if the payload is empty, of an unknown type,
+        or contains malformed CBOR. Expected layout:
+
+        - ``[0x1F][CBOR uint: subset_id][CBOR map: {id: value}]``
+        - ``[0x1E][CBOR uint64: eui][CBOR uint: subset_id][CBOR map: {id: value}]``
+
+        Binary only; the publish/subscribe path doesn't exist on text
+        transports.
+        """
+        if self.wire_format is not WireFormat.BINARY:
+            raise ValueError("parse_report is binary only")
+        if not payload:
+            return None
+        type_byte = payload[0]
+        if type_byte not in (REPORT_TYPE_STANDARD, REPORT_TYPE_ENHANCED):
+            return None
+
+        stream = io.BytesIO(payload[1:])
+        try:
+            eui: Union[int, None] = None
+            if type_byte == REPORT_TYPE_ENHANCED:
+                eui = cbor2.load(stream)
+            subset_id = cbor2.load(stream)
+            values = cbor2.load(stream)
+        except (cbor2.CBORDecodeError, cbor2.CBORDecodeEOF):
+            return None
+
+        if not isinstance(subset_id, int) or not isinstance(values, dict):
+            return None
+        if eui is not None and not isinstance(eui, int):
+            return None
+        return ThingSetReport(subset_id=subset_id, values=values, eui=eui)
 
     def try_consume(self, buffer: bytes) -> Tuple[Union[ParsedResponse, None], int]:
         """Extract one complete binary response from the start of ``buffer``.
