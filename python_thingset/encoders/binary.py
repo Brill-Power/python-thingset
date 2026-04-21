@@ -37,7 +37,7 @@ class ThingSetBinaryEncoder(object):
         else:
             req += cbor2.dumps(value_ids, canonical=True)
 
-        return req
+        return bytes(req)
 
     def encode_get(self, value_id: int) -> bytes:
         return bytes([ThingSetRequest.GET] + list(cbor2.dumps(value_id)))
