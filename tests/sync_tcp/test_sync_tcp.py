@@ -4,11 +4,12 @@ background-receive-thread + queue + try_consume framing path that the
 real CLI depends on — the 34 encoder tests don't touch any of this.
 """
 
+import io
 import socket
 import threading
 import time
 from contextlib import contextmanager
-from typing import Dict
+from typing import Dict, Optional
 
 import cbor2
 
@@ -38,10 +39,12 @@ class _SyncCannedServer:
         responses: Dict[bytes, bytes],
         chunked_response: bool = False,
         concat_responses: bool = False,
+        expect_forward_eui: Optional[int] = None,
     ):
         self._responses = responses
         self._chunked = chunked_response
         self._concat = concat_responses
+        self._expect_forward_eui = expect_forward_eui
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("127.0.0.1", 0))
@@ -75,7 +78,7 @@ class _SyncCannedServer:
                     return
                 if not data:
                     return
-                response = self._responses.get(bytes(data))
+                response = self._lookup(data)
                 if response is None:
                     continue
                 if self._chunked and len(response) > 1:
@@ -95,6 +98,22 @@ class _SyncCannedServer:
                 conn.close()
             except Exception:
                 pass
+
+    def _lookup(self, data: bytes) -> Optional[bytes]:
+        """Strip the gateway-forward envelope when expected, then match."""
+        if self._expect_forward_eui is not None:
+            if not data or data[0] != 0x1C:
+                return None
+            stream = io.BytesIO(data[1:])
+            try:
+                eui_str = cbor2.load(stream)
+            except Exception:
+                return None
+            expected = f"{self._expect_forward_eui:016x}"
+            if eui_str != expected:
+                return None
+            data = stream.read()
+        return self._responses.get(bytes(data))
 
     def close(self) -> None:
         self._running = False
@@ -223,3 +242,31 @@ def test_context_manager_cleans_up_connection():
         # After __exit__ disconnect should have run
         assert client.is_connected is False
     assert r.status_code == ThingSetStatus.CONTENT
+
+
+def test_forwarding_wraps_outgoing_requests():
+    """With target_eui set, the outgoing bytes are prefixed with the
+    0x1C forward envelope; the gateway-emulating server strips and
+    matches the inner request. Caller API is unchanged."""
+    target_eui = 0xBADB1B0000000001
+    inner_request = _protocol.encode_get(0xF03)
+    response = _bin_response(ThingSetStatus.CONTENT, "module_rBoard")
+    with _SyncCannedServer(
+        {inner_request: response}, expect_forward_eui=target_eui
+    ) as server, _port_override(server.port):
+        with ThingSetTCP("127.0.0.1", target_eui=target_eui) as client:
+            r = client.get(0xF03)
+    assert r.status_code == ThingSetStatus.CONTENT
+    assert r.data == "module_rBoard"
+
+
+def test_forwarding_wrong_eui_times_out():
+    """Mismatched EUI: gateway lookup fails and the client times out."""
+    inner_request = _protocol.encode_get(0xF03)
+    response = _bin_response(ThingSetStatus.CONTENT, "x")
+    with _SyncCannedServer(
+        {inner_request: response}, expect_forward_eui=0x1111111111111111
+    ) as server, _port_override(server.port):
+        with ThingSetTCP("127.0.0.1", target_eui=0x2222222222222222) as client:
+            r = client.get(0xF03)
+    assert r.status_code is None

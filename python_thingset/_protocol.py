@@ -40,6 +40,7 @@ class ParsedResponse:
 CBOR_NULL = 0xF6
 REPORT_TYPE_STANDARD = 0x1F
 REPORT_TYPE_ENHANCED = 0x1E
+REQUEST_FORWARD = 0x1C
 
 
 class ThingSetProtocol:
@@ -63,6 +64,24 @@ class ThingSetProtocol:
 
     def encode_update(self, parent_id, value_id, value) -> bytes:
         return self._encoder.encode_update(parent_id, value_id, value)
+
+    def wrap_forward(self, inner: bytes, target_eui: int) -> bytes:
+        """Wrap ``inner`` in a gateway-forward envelope targeting
+        ``target_eui``.
+
+        The wire shape is ``[0x1C][CBOR text string of EUI as 16 lowercase
+        hex chars][inner request bytes]``. The gateway (e.g. an HMCU
+        bridging TCP↔CAN) strips the first two CBOR items and routes
+        the remaining bytes to the module with the matching EUI. The
+        response comes back unwrapped.
+
+        Binary only — gateway forwarding isn't a concept on text
+        (serial) transports.
+        """
+        if self.wire_format is not WireFormat.BINARY:
+            raise ValueError("wrap_forward is binary only")
+        eui_str = f"{target_eui:016x}"
+        return bytes([REQUEST_FORWARD]) + cbor2.dumps(eui_str, canonical=True) + inner
 
     def parse_response(self, data: Union[bytes, str]) -> ParsedResponse:
         if self.wire_format is WireFormat.BINARY:

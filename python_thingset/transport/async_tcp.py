@@ -35,11 +35,22 @@ class AsyncThingSetTCP(AsyncThingSetClient):
         address: str,
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT_S,
+        *,
+        target_eui: Union[int, None] = None,
     ):
+        """Connect to a ThingSet device over TCP with asyncio.
+
+        When ``target_eui`` is given, every outgoing request is wrapped
+        in a gateway-forward envelope so the peer (expected to be an
+        IP↔CAN gateway such as an HMCU) routes it to the CAN-side
+        module with that EUI-64. Responses come back unwrapped; the
+        caller API is unchanged.
+        """
         self._protocol = ThingSetProtocol(WireFormat.BINARY)
         self._address = address
         self._port = port
         self._timeout = timeout
+        self._target_eui = target_eui
         self._reader: Union[asyncio.StreamReader, None] = None
         self._writer: Union[asyncio.StreamWriter, None] = None
         self._rx_queue: "asyncio.Queue[ParsedResponse]" = asyncio.Queue()
@@ -107,6 +118,8 @@ class AsyncThingSetTCP(AsyncThingSetClient):
                 "AsyncThingSetTCP is not connected; use `async with` "
                 "or call connect() first"
             )
+        if self._target_eui is not None:
+            request = self._protocol.wrap_forward(request, self._target_eui)
         async with self._lock:
             # Drain responses left over from a prior call that timed
             # out and whose reply arrived late — without correlation

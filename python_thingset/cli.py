@@ -118,6 +118,16 @@ def setup_args() -> argparse.Namespace:
         "--ip",
         help="Specify which IPv4 address to connect to (example 192.0.2.1)",
     )
+    parent_parser.add_argument(
+        "-e",
+        "--target-eui",
+        help=(
+            "With -i/--ip only: target a CAN-side module through the IP "
+            "gateway at --ip. 16-char lowercase hex EUI-64 (with or "
+            "without 0x prefix). Each request is wrapped in a forward "
+            "envelope so the gateway routes it to the module."
+        ),
+    )
 
     subparsers = arg_parser.add_subparsers(
         dest="method",
@@ -185,6 +195,11 @@ def setup_args() -> argparse.Namespace:
     args = arg_parser.parse_args()
 
     # post-parser validation
+    if args.target_eui and not args.ip:
+        arg_parser.error(
+            "-e/--target-eui is only valid with -i/--ip (gateway forwarding)"
+        )
+
     if args.can_bus:
         if not args.target_address:
             arg_parser.error("-t/--target-address is required with -c/--can_bus")
@@ -235,7 +250,8 @@ def _make_client(args: argparse.Namespace) -> ThingSetClient:
         return ThingSetCAN(args.can_bus)
     if args.port:
         return ThingSetSerial(args.port, args.baud_rate)
-    return ThingSetTCP(args.ip)
+    target_eui = int(args.target_eui, 16) if args.target_eui else None
+    return ThingSetTCP(args.ip, target_eui=target_eui)
 
 
 def _dispatch(ts: ThingSetClient, args: argparse.Namespace):

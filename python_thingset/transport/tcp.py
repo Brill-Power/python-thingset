@@ -68,8 +68,22 @@ class _TcpLink(ThingSetTransport):
 
 
 class ThingSetTCP(ThingSetClient):
-    def __init__(self, address: str = "192.0.2.1"):
+    def __init__(
+        self,
+        address: str = "192.0.2.1",
+        *,
+        target_eui: Union[int, None] = None,
+    ):
+        """Connect to a ThingSet device over TCP.
+
+        When ``target_eui`` is given, every outgoing request is wrapped
+        in a gateway-forward envelope so the peer (expected to be an
+        IP↔CAN gateway such as an HMCU) routes it to the CAN-side
+        module with that EUI-64. Responses come back unwrapped; the
+        caller API is unchanged.
+        """
         self._protocol = ThingSetProtocol(WireFormat.BINARY)
+        self._target_eui = target_eui
         self._link = _TcpLink(address, self._protocol)
         self._link.connect()
         self.is_connected = True
@@ -79,6 +93,8 @@ class ThingSetTCP(ThingSetClient):
         self.is_connected = False
 
     def _send(self, data: bytes, _: Union[int, None]) -> None:
+        if self._target_eui is not None:
+            data = self._protocol.wrap_forward(data, self._target_eui)
         self._link.send(data)
 
     def _recv(self) -> Union[ParsedResponse, None]:

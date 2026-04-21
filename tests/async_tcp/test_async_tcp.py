@@ -6,6 +6,7 @@ drives AsyncThingSetTCP against it.
 """
 
 import asyncio
+import io
 from typing import Dict, Optional
 
 import cbor2
@@ -43,13 +44,31 @@ class _CannedServer:
         responses: Dict[bytes, bytes],
         response_delay: float = 0.0,
         chunked_response: bool = False,
+        expect_forward_eui: Optional[int] = None,
     ):
         self._responses = responses
         self._response_delay = response_delay
         self._chunked = chunked_response
+        self._expect_forward_eui = expect_forward_eui
         self._server: Optional[asyncio.Server] = None
         self._handlers: set = set()
         self.port = 0
+
+    def _lookup(self, data: bytes) -> Optional[bytes]:
+        """Strip gateway-forward envelope if expected, then match."""
+        if self._expect_forward_eui is not None:
+            if not data or data[0] != 0x1C:
+                return None
+            stream = io.BytesIO(data[1:])
+            try:
+                eui_str = cbor2.load(stream)
+            except Exception:
+                return None
+            expected = f"{self._expect_forward_eui:016x}"
+            if eui_str != expected:
+                return None
+            data = stream.read()
+        return self._responses.get(bytes(data))
 
     async def __aenter__(self) -> "_CannedServer":
         self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
@@ -77,7 +96,7 @@ class _CannedServer:
                 data = await reader.read(4096)
                 if not data:
                     return
-                response = self._responses.get(bytes(data))
+                response = self._lookup(data)
                 if response is None:
                     continue
                 if self._response_delay:
@@ -256,3 +275,68 @@ async def test_async_with_discover_schema_loop_friendly():
 
     assert r.status_code == ThingSetStatus.CONTENT
     assert other_task_ran
+
+
+async def test_forwarding_wraps_outgoing_requests():
+    """With target_eui set, requests hit the wire with the 0x1C+EUI
+    envelope. The gateway-emulating server strips it and matches the
+    inner request; the client sees the unwrapped response."""
+    target_eui = 0xBADB1B0000000001
+    inner_request = _protocol.encode_get(0xF03)
+    response = _bin_response(ThingSetStatus.CONTENT, "module_rBoard")
+    async with _CannedServer(
+        {inner_request: response}, expect_forward_eui=target_eui
+    ) as server:
+        async with AsyncThingSetTCP(
+            "127.0.0.1", port=server.port, target_eui=target_eui
+        ) as client:
+            r = await client.get(0xF03)
+    assert r.status_code == ThingSetStatus.CONTENT
+    assert r.data == "module_rBoard"
+
+
+async def test_forwarding_wrong_eui_not_matched_by_gateway():
+    """If the client targets a different EUI than the gateway expects,
+    the server's lookup fails and the client times out."""
+    inner_request = _protocol.encode_get(0xF03)
+    response = _bin_response(ThingSetStatus.CONTENT, "x")
+    async with _CannedServer(
+        {inner_request: response}, expect_forward_eui=0x1111111111111111
+    ) as server:
+        async with AsyncThingSetTCP(
+            "127.0.0.1",
+            port=server.port,
+            timeout=0.1,
+            target_eui=0x2222222222222222,
+        ) as client:
+            r = await client.get(0xF03)
+    assert r.status_code is None
+
+
+async def test_forwarding_discover_schema_is_transparent():
+    """Schema discovery across a gateway uses the same wrapper on every
+    request. The walker itself is gateway-unaware."""
+    target_eui = 0xCAFE
+    responses = {
+        _protocol.encode_fetch(0x00, []):
+            _bin_response(ThingSetStatus.CONTENT, [0x0E]),
+        _protocol.encode_fetch(0x19, [0x0E]):
+            _bin_response(ThingSetStatus.CONTENT, [
+                {26: "OnlyGroup", 27: "group", 28: 7},
+            ]),
+        _protocol.encode_fetch(0x0E, []):
+            _bin_response(ThingSetStatus.CONTENT, [0xE04]),
+        _protocol.encode_fetch(0x19, [0xE04]):
+            _bin_response(ThingSetStatus.CONTENT, [
+                {26: "Leaf", 27: "u8", 28: 7},
+            ]),
+    }
+    async with _CannedServer(
+        responses, expect_forward_eui=target_eui
+    ) as server:
+        async with AsyncThingSetTCP(
+            "127.0.0.1", port=server.port, target_eui=target_eui
+        ) as client:
+            tree = await client.discover_schema()
+    assert set(tree.by_id.keys()) == {0x0E, 0xE04}
+    assert tree.by_path["OnlyGroup/Leaf"].type == "u8"
