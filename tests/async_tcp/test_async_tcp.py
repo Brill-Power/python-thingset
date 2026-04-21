@@ -48,6 +48,7 @@ class _CannedServer:
         self._response_delay = response_delay
         self._chunked = chunked_response
         self._server: Optional[asyncio.Server] = None
+        self._handlers: set = set()
         self.port = 0
 
     async def __aenter__(self) -> "_CannedServer":
@@ -59,9 +60,18 @@ class _CannedServer:
     async def __aexit__(self, exc_type, exc, tb):
         assert self._server is not None
         self._server.close()
+        # Server.wait_closed() doesn't wait for active connections (3.10);
+        # cancel pending handlers explicitly so they don't dangle.
+        for handler in list(self._handlers):
+            handler.cancel()
+        if self._handlers:
+            await asyncio.gather(*self._handlers, return_exceptions=True)
         await self._server.wait_closed()
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        task = asyncio.current_task()
+        if task is not None:
+            self._handlers.add(task)
         try:
             while True:
                 data = await reader.read(4096)
@@ -86,6 +96,8 @@ class _CannedServer:
         except (asyncio.CancelledError, ConnectionError):
             pass
         finally:
+            if task is not None:
+                self._handlers.discard(task)
             try:
                 writer.close()
                 await writer.wait_closed()
