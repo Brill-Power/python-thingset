@@ -1,0 +1,141 @@
+#
+# Copyright (c) 2024-2025 Brill Power.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+"""Sans-io ThingSet protocol core.
+
+Encodes requests into bytes, parses response bytes into structured
+ParsedResponse objects, and provides streaming framing for binary
+transports via try_consume(). This module performs no I/O; transports
+feed it bytes and pull parsed responses.
+"""
+
+import io
+import json
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Tuple, Union
+
+import cbor2
+
+from .encoders import ThingSetBinaryEncoder, ThingSetTextEncoder
+from .response import ThingSetStatus
+
+
+class WireFormat(Enum):
+    BINARY = 1
+    TEXT = 2
+
+
+@dataclass
+class ParsedResponse:
+    status_code: Union[int, None]
+    status_string: Union[str, None]
+    data: Any
+    raw: Union[bytes, str]
+
+
+CBOR_NULL = 0xF6
+
+
+class ThingSetProtocol:
+    def __init__(self, wire_format: WireFormat):
+        self.wire_format = wire_format
+        if wire_format is WireFormat.BINARY:
+            self._encoder = ThingSetBinaryEncoder()
+        elif wire_format is WireFormat.TEXT:
+            self._encoder = ThingSetTextEncoder()
+        else:
+            raise ValueError(f"Unknown wire format: {wire_format}")
+
+    def encode_get(self, value_id) -> bytes:
+        return self._encoder.encode_get(value_id)
+
+    def encode_fetch(self, parent_id, ids) -> bytes:
+        return self._encoder.encode_fetch(parent_id, ids)
+
+    def encode_exec(self, value_id, args) -> bytes:
+        return self._encoder.encode_exec(value_id, args)
+
+    def encode_update(self, parent_id, value_id, value) -> bytes:
+        return self._encoder.encode_update(parent_id, value_id, value)
+
+    def encode_get_path(self, value_id) -> bytes:
+        return self._encoder.encode_get_path(value_id)
+
+    def parse_response(self, data: Union[bytes, str]) -> ParsedResponse:
+        if self.wire_format is WireFormat.BINARY:
+            return self._parse_binary(data)
+        return self._parse_text(data)
+
+    def try_consume(self, buffer: bytes) -> Tuple[Union[ParsedResponse, None], int]:
+        """Extract one complete binary response from the start of ``buffer``.
+
+        Returns ``(response, consumed)`` — ``consumed`` is the number of
+        leading bytes the caller should drop. If the buffer does not yet
+        hold a complete message, returns ``(None, 0)``. On malformed CBOR
+        the whole buffer is consumed to resync.
+
+        Binary only; text transports should call parse_response() with a
+        complete newline-framed line.
+        """
+        if self.wire_format is not WireFormat.BINARY:
+            raise ValueError("try_consume is binary only")
+        if len(buffer) < 2:
+            return None, 0
+
+        offset = 1  # status byte
+        if buffer[offset] == CBOR_NULL:
+            offset += 1
+            if offset == len(buffer):
+                return self._parse_binary(buffer[:offset]), offset
+
+        stream = io.BytesIO(buffer[offset:])
+        try:
+            cbor2.load(stream)
+        except cbor2.CBORDecodeEOF:
+            return None, 0
+        except cbor2.CBORDecodeError:
+            return None, len(buffer)
+
+        consumed = offset + stream.tell()
+        return self._parse_binary(buffer[:consumed]), consumed
+
+    def _parse_binary(self, data: bytes) -> ParsedResponse:
+        status_code = data[0] if len(data) > 0 else None
+        status_string = (
+            ThingSetStatus.status_code_name(status_code)
+            if status_code is not None
+            else None
+        )
+        payload = data[1:].replace(b"\xf6", b"", 1)
+        parsed: Any = None
+        if len(payload) > 0:
+            try:
+                parsed = cbor2.loads(payload)
+            except cbor2.CBORDecodeEOF as e:
+                parsed = e
+        return ParsedResponse(status_code, status_string, parsed, data)
+
+    def _parse_text(self, data: Union[bytes, str]) -> ParsedResponse:
+        if isinstance(data, bytes):
+            data = data.decode()
+        line = data.split("\r\n")[0]
+        try:
+            status_code = int(line[1:3], 16)
+        except (ValueError, IndexError):
+            status_code = None
+        status_string = (
+            ThingSetStatus.status_code_name(status_code)
+            if status_code is not None
+            else None
+        )
+        payload_str = line[4:]
+        parsed: Any = None
+        if len(payload_str) > 0:
+            try:
+                parsed = json.loads(payload_str)
+            except json.decoder.JSONDecodeError:
+                pass
+        return ParsedResponse(status_code, status_string, parsed, data)

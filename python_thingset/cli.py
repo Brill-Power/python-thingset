@@ -6,18 +6,17 @@
 #!/usr/bin/env python3
 
 import argparse
-
 from time import sleep
 from typing import Union
 
-from .backends import ThingSetBackend
-from .thingset import ThingSet
+from .client import ThingSetClient
+from .transport import ThingSetCAN, ThingSetSerial, ThingSetTCP
 
 
 def process_args(args: list) -> list:
     processed_args = list()
 
-    """ convert '36' to int, '24.0' to float and leave 'some-text' as str """
+    # convert '36' to int, '24.0' to float, leave 'some-text' as str
     for a in args:
         try:
             processed_args.append(int(a))
@@ -37,7 +36,9 @@ def process_args(args: list) -> list:
 
 
 def get_schema(
-    ts: ThingSet, object_id: Union[int, str], node_id: Union[int, None] = None
+    ts: ThingSetClient,
+    object_id: Union[int, str],
+    node_id: Union[int, None] = None,
 ):
     if node_id is not None:
         child_ids = ts.fetch(object_id, [], node_id)
@@ -54,7 +55,7 @@ def get_schema(
             for v in val.value:
                 print(f"{object_id if object_id != '00' else ''}/{v}")
 
-                """ avoid <wrn> shell_uart: RX ring buffer full """
+                # avoid <wrn> shell_uart: RX ring buffer full
                 sleep(0.005)
 
                 if object_id != "00":
@@ -70,7 +71,6 @@ def setup_args() -> argparse.Namespace:
 
     group = parent_parser.add_mutually_exclusive_group(required=True)
 
-    """ CAN options """
     group.add_argument(
         "-c",
         "--can-bus",
@@ -84,7 +84,6 @@ def setup_args() -> argparse.Namespace:
         help="Specify target device node address (example: 2F)",
     )
 
-    """ Serial options """
     group.add_argument(
         "-p",
         "--port",
@@ -101,14 +100,12 @@ def setup_args() -> argparse.Namespace:
         type=int,
     )
 
-    """ Socket options """
     group.add_argument(
         "-i",
         "--ip",
         help="Specify which IPv4 address to connect to (example 192.0.2.1)",
     )
 
-    """ Functions """
     subparsers = arg_parser.add_subparsers(
         dest="method",
         required=True,
@@ -174,7 +171,7 @@ def setup_args() -> argparse.Namespace:
 
     args = arg_parser.parse_args()
 
-    """ post-parser validation """
+    # post-parser validation
     if args.can_bus:
         if not args.target_address:
             arg_parser.error("-t/--target-address is required with -c/--can_bus")
@@ -182,34 +179,31 @@ def setup_args() -> argparse.Namespace:
         if args.method == "update":
             if len(args.update_args) != 3:
                 arg_parser.error(
-                    "When using update with -c/--can-bus you must suply a parent_id, value_id and value "
+                    "When using update with -c/--can-bus you must suply a "
+                    "parent_id, value_id and value "
                     "(example: thingset update f f03 MyValue -c vcan0"
                 )
             else:
                 args.parent_id = args.update_args[0]
                 args.value_id = args.update_args[1]
                 args.value = [args.update_args[2]]
-
-        args.backend = ThingSetBackend.CAN
     elif args.port:
         if args.method == "update":
             if len(args.update_args) != 2:
                 arg_parser.error(
-                    "When using update with -p/--port you must suply a path and a value (example: "
+                    "When using update with -p/--port you must suply a path "
+                    "and a value (example: "
                     "thingset update Module/sCanMaxLogLevel 4 -p /dev/pts/5"
                 )
             else:
                 args.parent_id = args.update_args[0]
                 args.value = [args.update_args[1]]
-
-        args.backend = ThingSetBackend.Serial
     elif args.ip:
-        args.backend = ThingSetBackend.Socket
-
         if args.method == "update":
             if len(args.update_args) != 3:
                 arg_parser.error(
-                    "When using update with -i/--ip you must suply a parent_id, value_id and value "
+                    "When using update with -i/--ip you must suply a "
+                    "parent_id, value_id and value "
                     "(example: thingset update f f03 MyValue -i 192.0.2.1"
                 )
             else:
@@ -223,76 +217,85 @@ def setup_args() -> argparse.Namespace:
     return args
 
 
+def _make_client(args: argparse.Namespace) -> ThingSetClient:
+    if args.can_bus:
+        return ThingSetCAN(args.can_bus)
+    if args.port:
+        return ThingSetSerial(args.port, args.baud_rate)
+    return ThingSetTCP(args.ip)
+
+
+def _dispatch(ts: ThingSetClient, args: argparse.Namespace):
+    is_serial = bool(args.port)
+    is_tcp = bool(args.ip)
+
+    match args.method:
+        case "get":
+            if is_serial:
+                return ts.get(args.id)
+            if is_tcp:
+                return ts.get(int(args.id, 16))
+            return ts.get(int(args.id, 16), int(args.target_address, 16))
+
+        case "fetch":
+            if is_serial:
+                return ts.fetch(args.parent_id, args.value_ids)
+            if is_tcp:
+                return ts.fetch(
+                    int(args.parent_id, 16),
+                    [int(i, 16) for i in args.value_ids],
+                )
+            return ts.fetch(
+                int(args.parent_id, 16),
+                [int(i, 16) for i in args.value_ids],
+                int(args.target_address, 16),
+            )
+
+        case "exec":
+            p_args = process_args(args.values)
+            if is_serial:
+                return ts.exec(args.value_id, p_args)
+            if is_tcp:
+                return ts.exec(int(args.value_id, 16), p_args)
+            return ts.exec(
+                int(args.value_id, 16),
+                p_args,
+                node_id=int(args.target_address, 16),
+            )
+
+        case "update":
+            if is_serial:
+                return ts.update(args.parent_id, args.value)
+            p_args = process_args(args.value)
+            if is_tcp:
+                return ts.update(
+                    int(args.value_id, 16),
+                    p_args[0],
+                    parent_id=int(args.parent_id, 16),
+                )
+            return ts.update(
+                int(args.value_id, 16),
+                p_args[0],
+                int(args.target_address, 16),
+                int(args.parent_id, 16),
+            )
+
+        case "schema":
+            if is_serial:
+                get_schema(ts, args.root_id)
+            elif is_tcp:
+                get_schema(ts, int(args.root_id, 16))
+            else:
+                get_schema(ts, int(args.root_id, 16), int(args.target_address, 16))
+            return None
+
+    return None
+
+
 def run_cli():
     args = setup_args()
-
-    with ThingSet(can_bus=args.can_bus,
-              backend=args.backend,
-              port=args.port,
-              ip_addr=args.ip) as ts:
-        response = None
-
-        match args.method:
-            case "get":
-                if args.backend.lower() == "serial":
-                    response = ts.get(args.id)
-                elif args.backend.lower() == "socket":
-                    response = ts.get(int(args.id, 16))
-                else:
-                    response = ts.get(int(args.id, 16), int(args.target_address, 16))
-            case "fetch":
-                if args.backend.lower() == "serial":
-                    response = ts.fetch(args.parent_id, args.value_ids)
-                elif args.backend.lower() == "socket":
-                    response = ts.fetch(
-                        int(args.parent_id, 16), [int(i, 16) for i in args.value_ids]
-                    )
-                else:
-                    response = ts.fetch(
-                        int(args.parent_id, 16),
-                        [int(i, 16) for i in args.value_ids],
-                        int(args.target_address, 16),
-                    )
-            case "exec":
-                p_args = process_args(args.values)
-
-                if args.backend.lower() == "serial":
-                    response = ts.exec(args.value_id, p_args)
-                elif args.backend.lower() == "socket":
-                    response = ts.exec(int(args.value_id, 16), p_args)
-                else:
-                    response = ts.exec(
-                        int(args.value_id, 16),
-                        p_args,
-                        node_id=int(args.target_address, 16),
-                    )
-            case "update":
-                if args.backend.lower() == "serial":
-                    response = ts.update(args.parent_id, args.value)
-                elif args.backend.lower() == "socket":
-                    p_args = process_args(args.value)
-                    response = ts.update(
-                        int(args.value_id, 16),
-                        p_args[0],
-                        parent_id=int(args.parent_id, 16),
-                    )
-                else:
-                    p_args = process_args(args.value)
-                    response = ts.update(
-                        int(args.value_id, 16),
-                        p_args[0],
-                        int(args.target_address, 16),
-                        int(args.parent_id, 16),
-                    )
-            case "schema":
-                if args.backend.lower() == "serial":
-                    get_schema(ts, args.root_id)
-                elif args.backend.lower() == "socket":
-                    get_schema(ts, int(args.root_id, 16))
-                else:
-                    get_schema(ts, int(args.root_id, 16), int(args.target_address, 16))
-            case _:
-                pass
+    with _make_client(args) as ts:
+        response = _dispatch(ts, args)
 
     if response is not None:
         print(response)
