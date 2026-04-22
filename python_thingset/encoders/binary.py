@@ -13,7 +13,6 @@ from ..response import ThingSetRequest
 
 
 class ThingSetBinaryEncoder(object):
-    PATHS = 0x17
     NULL_BYTE = 0xF6
 
     def __init__(self):
@@ -38,7 +37,7 @@ class ThingSetBinaryEncoder(object):
         else:
             req += cbor2.dumps(value_ids, canonical=True)
 
-        return req
+        return bytes(req)
 
     def encode_get(self, value_id: int) -> bytes:
         return bytes([ThingSetRequest.GET] + list(cbor2.dumps(value_id)))
@@ -75,12 +74,6 @@ class ThingSetBinaryEncoder(object):
             + list(cbor2.dumps(parent_id))
             + list(cbor2.dumps({value_id: value}, canonical=True))
         )
-
-    def encode_get_path(self, value_id: int) -> bytes:
-        req = bytearray([ThingSetRequest.FETCH, self.PATHS])
-        req.extend(cbor2.dumps([value_id]))
-
-        return req
 
     def to_f32(self, value: float) -> float:
         """In Python, all floats are actually doubles. This does not map well to embedded targets where

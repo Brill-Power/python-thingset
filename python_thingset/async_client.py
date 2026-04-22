@@ -3,6 +3,20 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+"""Async ThingSet client base class.
+
+Mirrors the sync :class:`ThingSetClient` surface with ``async def``
+RPCs suitable for an asyncio event loop. Subclasses implement
+:meth:`_rpc` to perform a single request/response exchange.
+
+ThingSet's wire protocol has no correlation ID, so a single transport
+can only carry one RPC at a time. Concrete subclasses MUST serialize
+concurrent callers internally (typically via an ``asyncio.Lock``).
+Serialization still yields the event loop during I/O, which is the
+whole point — the Device Bridge keeps running other coroutines while
+a ThingSet RPC is in flight.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Union
 
@@ -19,27 +33,22 @@ _METADATA_KEY_ACCESS = 28  # 0x1C
 _RECURSIVE_TYPE = "group"
 
 
-class ThingSetClient(ABC):
-    """Abstract client: templates the fetch/get/exec/update flow over
-    an encoded request followed by a parsed response. Subclasses provide
-    the transport by implementing _send and _recv, and set self._protocol.
-    """
-
+class AsyncThingSetClient(ABC):
     _protocol: ThingSetProtocol
 
     @property
     def wire_format(self) -> WireFormat:
         return self._protocol.wire_format
 
-    def fetch(
+    async def fetch(
         self,
         parent_id: Union[int, str],
         ids: List[Union[int, str]],
         node_id: Union[int, None] = None,
     ) -> ThingSetResponse:
-        self._send(self._protocol.encode_fetch(parent_id, ids), node_id)
-        parsed = self._recv()
-
+        parsed = await self._rpc(
+            self._protocol.encode_fetch(parent_id, ids), node_id
+        )
         values: List[ThingSetValue] = []
         if (
             parsed is not None
@@ -51,17 +60,14 @@ class ThingSetClient(ABC):
             else:
                 for idx, vid in enumerate(ids):
                     values.append(self._build_value(vid, parsed.data[idx]))
-
         return self._to_response(parsed, values)
 
-    def get(
+    async def get(
         self,
         value_id: Union[int, str],
         node_id: Union[int, None] = None,
     ) -> ThingSetResponse:
-        self._send(self._protocol.encode_get(value_id), node_id)
-        parsed = self._recv()
-
+        parsed = await self._rpc(self._protocol.encode_get(value_id), node_id)
         values: List[ThingSetValue] = []
         if (
             parsed is not None
@@ -69,54 +75,46 @@ class ThingSetClient(ABC):
             and parsed.status_code <= ThingSetStatus.CONTENT
         ):
             values.append(self._build_value(value_id, parsed.data))
-
         return self._to_response(parsed, values)
 
-    def update(
+    async def update(
         self,
         value_id: Union[int, str],
         value: Any,
         node_id: Union[int, None] = None,
         parent_id: Union[int, None] = None,
     ) -> ThingSetResponse:
-        self._send(self._protocol.encode_update(parent_id, value_id, value), node_id)
-        return self._to_response(self._recv())
+        parsed = await self._rpc(
+            self._protocol.encode_update(parent_id, value_id, value), node_id
+        )
+        return self._to_response(parsed)
 
-    def exec(
+    async def exec(
         self,
         value_id: Union[int, str],
         args: Union[List[Any], None],
         node_id: Union[int, None] = None,
     ) -> ThingSetResponse:
-        self._send(self._protocol.encode_exec(value_id, args), node_id)
-        return self._to_response(self._recv())
+        parsed = await self._rpc(
+            self._protocol.encode_exec(value_id, args), node_id
+        )
+        return self._to_response(parsed)
 
-    def discover_schema(
+    async def discover_schema(
         self,
         root_id: int = 0,
         node_id: Union[int, None] = None,
     ) -> SchemaTree:
-        """Walk the device's object tree and build a structured schema.
-
-        Issues two fetches per group: one for child IDs, one for the
-        metadata overlay (which carries name, type and access for every
-        child in a single round-trip). Recursion is bounded by type:
-        only children whose type is ``"group"`` are walked further;
-        records, functions and primitives are terminal.
-
-        Binary wire format only — raises ``ValueError`` on text
-        transports, which lack the metadata overlay.
-        """
         if self.wire_format is not WireFormat.BINARY:
             raise ValueError(
                 "discover_schema requires a binary wire format (TCP or CAN)"
             )
         by_id: Dict[int, SchemaNode] = {}
         by_path: Dict[str, SchemaNode] = {}
-        root = self._walk_schema(root_id, "", node_id, by_id, by_path)
+        root = await self._walk_schema(root_id, "", node_id, by_id, by_path)
         return SchemaTree(root=root, by_id=by_id, by_path=by_path)
 
-    def _walk_schema(
+    async def _walk_schema(
         self,
         group_id: int,
         path_prefix: str,
@@ -124,14 +122,14 @@ class ThingSetClient(ABC):
         by_id: Dict[int, SchemaNode],
         by_path: Dict[str, SchemaNode],
     ) -> List[SchemaNode]:
-        fresp = self.fetch(group_id, [], node_id)
+        fresp = await self.fetch(group_id, [], node_id)
         if not fresp.values:
             return []
         child_ids = fresp.values[0].value
         if not isinstance(child_ids, list) or not child_ids:
             return []
 
-        mresp = self.fetch(_METADATA_OVERLAY, child_ids, node_id)
+        mresp = await self.fetch(_METADATA_OVERLAY, child_ids, node_id)
         if mresp.status_code != ThingSetStatus.CONTENT or not mresp.values:
             return []
 
@@ -147,7 +145,7 @@ class ThingSetClient(ABC):
 
             children: List[SchemaNode] = []
             if type_str == _RECURSIVE_TYPE:
-                children = self._walk_schema(
+                children = await self._walk_schema(
                     cid, full_path, node_id, by_id, by_path
                 )
 
@@ -171,7 +169,6 @@ class ThingSetClient(ABC):
         value: Any,
     ) -> ThingSetValue:
         if self.wire_format is WireFormat.TEXT:
-            # Text (serial) addresses values by path; the "id" IS the path
             return ThingSetValue(None, value, value_id)
         return ThingSetValue(value_id, value, None)
 
@@ -191,19 +188,17 @@ class ThingSetClient(ABC):
         )
 
     @abstractmethod
-    def disconnect(self) -> None:
+    async def close(self) -> None:
         pass
 
     @abstractmethod
-    def _send(self, data: bytes, node_id: Union[int, None]) -> None:
+    async def _rpc(
+        self, request: bytes, node_id: Union[int, None]
+    ) -> Union[ParsedResponse, None]:
         pass
 
-    @abstractmethod
-    def _recv(self) -> Union[ParsedResponse, None]:
-        pass
-
-    def __enter__(self) -> "ThingSetClient":
+    async def __aenter__(self) -> "AsyncThingSetClient":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.disconnect()
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()

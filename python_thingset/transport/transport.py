@@ -5,15 +5,16 @@
 #
 import threading
 from abc import ABC, abstractmethod
-from typing import Union
-
-import can
+from typing import Any
 
 
-class ThingSetBackend(ABC):
-    CAN: str = "can"
-    Serial: str = "serial"
-    Socket: str = "socket"
+class ThingSetTransport(ABC):
+    """Abstract base class for ThingSet transport drivers.
+
+    Owns a background receive thread that polls receive() and dispatches
+    completed messages via _handle_message(). Subclasses implement the
+    wire-specific I/O and the framing logic in _handle_message.
+    """
 
     def __init__(self):
         self._running = False
@@ -37,26 +38,21 @@ class ThingSetBackend(ABC):
                 self._handle_message(message)
 
     @abstractmethod
-    def _handle_message(self, message: Union[bytes, can.Message]) -> None:
-        """Handle an incoming message (customize this as needed)."""
+    def _handle_message(self, message: Any) -> None:
         pass
 
     @abstractmethod
     def connect(self) -> None:
-        """perform backend initialisation"""
         pass
 
     @abstractmethod
     def disconnect(self) -> None:
-        """perform backend teardown"""
         pass
 
     @abstractmethod
-    def send(self, _data: Union[bytes, can.Message]) -> None:
-        """send data"""
+    def send(self, data: Any) -> None:
         pass
 
     @abstractmethod
-    def receive(self) -> Union[bytes, can.Message]:
-        """receive data"""
+    def receive(self) -> Any:
         pass

@@ -1,0 +1,12 @@
+{
+  "0x0062": "mAcmuAddr",
+  "0x0600": "mCellVoltages",
+  "0x0601": "mCellBalancing",
+  "0x602c": "mPackVoltage",
+  "0x602d": "mPackCurrent",
+  "0x0c00": "mAcmuStatus",
+  "0x6450": "mCells",
+  "0x6451": "mCellVoltage",
+  "0x6453": "mCellTemperature",
+  "0x6455": "mCellSoC"
+}

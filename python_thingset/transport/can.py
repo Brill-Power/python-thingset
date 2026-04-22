@@ -5,14 +5,15 @@
 #
 import queue
 import threading
+import time
 from typing import Callable, Tuple, Union
 
 import can
 import isotp
 
-from .backend import ThingSetBackend
+from .transport import ThingSetTransport
+from .._protocol import ParsedResponse, ThingSetProtocol, WireFormat
 from ..client import ThingSetClient
-from ..encoders import ThingSetBinaryEncoder
 from ..id import ThingSetID
 from ..log import get_logger
 
@@ -20,40 +21,14 @@ from ..log import get_logger
 logger = get_logger()
 
 
-class CAN(ThingSetBackend):
-    def __init__(self, bus: str, interface: str = "socketcan", fd=True):
+class _CanLink(ThingSetTransport):
+    def __init__(self, bus: str, interface: str = "socketcan", fd: bool = True):
         super().__init__()
-
         self.bus = bus
         self.interface = interface
         self.fd = fd
-
         self._can = None
         self._rx_filters = []
-
-    @property
-    def bus(self) -> str:
-        return self._bus
-
-    @bus.setter
-    def bus(self, _bus: str) -> None:
-        self._bus = _bus
-
-    @property
-    def interface(self) -> str:
-        return self._interface
-
-    @interface.setter
-    def interface(self, _interface: str) -> None:
-        self._interface = _interface
-
-    @property
-    def fd(self) -> bool:
-        return self._fd
-
-    @fd.setter
-    def fd(self, _fd: bool) -> None:
-        self._fd = _fd
 
     def attach_rx_filter(self, id: int, mask: int, callback: Callable) -> None:
         self._rx_filters.append({"id": id, "mask": mask, "callback": callback})
@@ -88,71 +63,58 @@ class CAN(ThingSetBackend):
         return self._can.send(message)
 
 
-class ISOTP(ThingSetBackend):
-    def __init__(self, bus: str, rx_id: int, tx_id: int, fd: bool = True):
-        super().__init__()
+class _IsotpLink(ThingSetTransport):
+    """ISO-TP (multi-frame CAN) link. Emits parsed ThingSet responses
+    into a queue via the injected protocol. Lifetime is one request/
+    response cycle — constructed per _send in ThingSetCAN, torn down
+    inside get_response().
+    """
 
+    def __init__(
+        self,
+        bus: str,
+        rx_id: int,
+        tx_id: int,
+        protocol: ThingSetProtocol,
+        fd: bool = True,
+    ):
+        super().__init__()
         self.bus = bus
         self.rx_id = rx_id
         self.tx_id = tx_id
-
+        self._protocol = protocol
         self._address = None
         self._sock = isotp.socket(timeout=0.1)
-        self._queue = queue.Queue()
+        self._queue: "queue.Queue[ParsedResponse]" = queue.Queue()
         self._send_recurse_ctr = 0
 
         if fd:
             self._sock.set_ll_opts(mtu=isotp.socket.LinkLayerProtocol.CAN_FD, tx_dl=64)
 
-        self.set_address()
+        self._set_address()
         self.connect()
 
-    @property
-    def bus(self) -> str:
-        return self._bus
-
-    @bus.setter
-    def bus(self, _bus: str) -> None:
-        self._bus = _bus
-
-    @property
-    def rx_id(self) -> int:
-        return self._rx_id
-
-    @rx_id.setter
-    def rx_id(self, _id: int) -> None:
-        self._rx_id = _id
-
-    @property
-    def tx_id(self) -> int:
-        return self._tx_id
-
-    @tx_id.setter
-    def tx_id(self, _id: int) -> None:
-        self._tx_id = _id
-
-    def set_address(self) -> None:
+    def _set_address(self) -> None:
         self._address = isotp.Address(
             addressing_mode=isotp.AddressingMode.Normal_29bits,
             rxid=self.rx_id,
             txid=self.tx_id,
         )
 
-    def get_message(self, timeout: float = 1.5) -> Union[bytes, None]:
-        message = None
-
+    def get_response(self, timeout: float = 1.5) -> Union[ParsedResponse, None]:
+        response = None
         try:
-            message = self._queue.get(timeout=timeout)
+            response = self._queue.get(timeout=timeout)
         except queue.Empty:
             pass
         finally:
-            if message is not None:
+            if response is not None:
                 self._queue.task_done()
             self.disconnect()
-            return message
+            return response
 
-    def _handle_message(self, message):
-        self._queue.put(message)
+    def _handle_message(self, message: bytes) -> None:
+        self._queue.put(self._protocol.parse_response(message))
 
     def connect(self) -> None:
         self._sock.bind(self.bus, self._address)
@@ -162,28 +124,22 @@ class ISOTP(ThingSetBackend):
         self.stop_receiving()
         self._sock.close()
 
-    def send(self, _data: bytes) -> None:
-        """We have recursive calls to self.send here as we can't easily tell when the CAN
-        device is busy from another program (which is entirely possible)
-
-        So we just retry up to 10 times - with a timeout of 100ms this equates to 1 second
-
-        The resultant call to ThingSetCAN.get/update/fetch/exec will just return a None response
-        if the retry limit is exceeded so can be handled easily at the application layer
+    def send(self, data: bytes) -> None:
+        """Retry on CAN bus contention up to 10 times (1 s at 100 ms
+        per try). Beyond that the resultant get_response call returns
+        None and the application layer handles it.
         """
-
         try:
-            _send = self._sock.send(_data)
+            sent = self._sock.send(data)
             self._send_recurse_ctr = 0
-            return _send
+            return sent
         except TimeoutError:
             self._send_recurse_ctr += 1
             if self._send_recurse_ctr >= 10:
                 self._send_recurse_ctr = 0
                 logger.error("ISOTP transmission retry limit exceeded")
                 return None
-
-            self.send(_data)
+            self.send(data)
 
     def receive(self) -> bytes:
         try:
@@ -192,18 +148,20 @@ class ISOTP(ThingSetBackend):
             return None
 
 
-class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
+class ThingSetCAN(ThingSetClient):
     ADDR_CLAIM_TIMEOUT_MS: int = 500
     CONNECT_TIMEOUT_MS: int = 10000
 
     EUI: list = [0xDE, 0xAD, 0xBE, 0xEF, 0xC0, 0xFF, 0xEE, 0xEE]
 
     def __init__(
-        self, bus: str, addr: int = 0x00, source_bus: int = 0x00, target_bus: int = 0x00
+        self,
+        bus: str,
+        addr: int = 0x00,
+        source_bus: int = 0x00,
+        target_bus: int = 0x00,
     ):
-        super().__init__()
-
-        self.backend = ThingSetBackend.CAN
+        self._protocol = ThingSetProtocol(WireFormat.BINARY)
         self.bus = bus
         self.node_addr = None
         self.source_bus = source_bus
@@ -212,27 +170,42 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         self._addr_claim_timer = None
         self._taken_node_addrs = []
 
-        self._can = CAN(self.bus)
+        self._can = _CanLink(self.bus)
         self._can.connect()
+        self._isotp: Union[_IsotpLink, None] = None
+        self.is_connected = False
         self._negotiate_address(addr)
+
+        # Address negotiation is driven by a threading.Timer; block the
+        # constructor until is_connected flips true (or we time out).
+        # Without this, callers would race _send against a still-None
+        # node_addr.
+        deadline = time.monotonic() + (self.CONNECT_TIMEOUT_MS / 1000)
+        while not self.is_connected and time.monotonic() < deadline:
+            time.sleep(0.01)
+        if not self.is_connected:
+            raise TimeoutError(
+                f"CAN address negotiation did not complete within "
+                f"{self.CONNECT_TIMEOUT_MS} ms"
+            )
 
     def disconnect(self) -> None:
         self._can.disconnect()
-
         if self._addr_claim_timer is not None:
             self._addr_claim_timer.cancel()
-
         self._can.remove_all_rx_filters()
 
     def _send(self, data: bytes, node_id: Union[int, None]) -> None:
         req_id, resp_id = self._get_isotp_ids(node_id)
-        self._isotp = ISOTP(self.bus, resp_id.id, req_id.id)
+        self._isotp = _IsotpLink(self.bus, resp_id.id, req_id.id, self._protocol)
         self._isotp.send(data)
 
-    def _recv(self) -> bytes:
-        return self._isotp.get_message()
+    def _recv(self) -> Union[ParsedResponse, None]:
+        if self._isotp is None:
+            return None
+        return self._isotp.get_response()
 
-    def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID]:
+    def _get_isotp_ids(self, node_id: int) -> Tuple[ThingSetID, ThingSetID]:
         return (
             ThingSetID.generate_req_resp_id(
                 self.node_addr, node_id, self.source_bus, self.target_bus
@@ -277,11 +250,13 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
                     return None
 
             raise IOError(
-                f"All addresses within range 0x{ThingSetID.MIN_ADDR:02X} to 0x{ThingSetID.MAX_ADDR:02X} are taken"
+                f"All addresses within range 0x{ThingSetID.MIN_ADDR:02X} to "
+                f"0x{ThingSetID.MAX_ADDR:02X} are taken"
             )
         else:
             logger.debug(
-                f"Device tried to claim this nodes address 0x{self.node_addr:02X}, sending claim frame"
+                f"Device tried to claim this nodes address 0x{self.node_addr:02X}, "
+                f"sending claim frame"
             )
             self._can.send(
                 can.Message(
@@ -318,19 +293,3 @@ class ThingSetCAN(ThingSetClient, ThingSetBinaryEncoder):
         )
 
         logger.debug(f"Claimed node address 0x{self.node_addr:02X}")
-
-    @property
-    def bus(self) -> str:
-        return self._bus
-
-    @bus.setter
-    def bus(self, _bus: str) -> None:
-        self._bus = _bus
-
-    @property
-    def node_addr(self) -> int:
-        return self._node_addr
-
-    @node_addr.setter
-    def node_addr(self, _addr: Union[int, None]) -> None:
-        self._node_addr = _addr
