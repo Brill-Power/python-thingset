@@ -322,17 +322,180 @@ def _dispatch(ts: ThingSetClient, args: argparse.Namespace):
     return None
 
 
+_METADATA_OVERLAY_ID = 0x19
+_METADATA_NAME_KEY = 26
+_METADATA_TYPE_KEY = 27
+
+
+def _fmt(v, names: dict = None) -> str:
+    """Render dict keys as uppercase hex (they're ThingSet IDs by
+    convention) but leave values and list elements as their plain repr
+    — those are data, not IDs. When ``names`` is given, a dict key (or
+    a list element that is entirely a set of known IDs) gets the name
+    appended after the hex."""
+    names = names or {}
+    if isinstance(v, dict):
+        parts = []
+        for k, val in v.items():
+            if isinstance(k, int) and not isinstance(k, bool):
+                key = f"0x{k:X}"
+                info = names.get(k)
+                if info and info[0]:
+                    key += f" {info[0]}"
+            else:
+                key = repr(k)
+            parts.append(f"{key}: {_fmt(val, names)}")
+        return "{" + ", ".join(parts) + "}"
+    if isinstance(v, list):
+        # A list whose elements are all known IDs (resolved via
+        # metadata) is a children-fetch result — render as hex IDs
+        # with names. Otherwise leave as plain repr (firmware-version
+        # tuples and similar data arrays stay decimal).
+        if v and all(
+            isinstance(x, int) and not isinstance(x, bool) and x in names
+            for x in v
+        ):
+            parts = []
+            for i in v:
+                label = f"0x{i:X}"
+                if names[i][0]:
+                    label += f" {names[i][0]}"
+                parts.append(label)
+            return "[" + ", ".join(parts) + "]"
+        return "[" + ", ".join(_fmt(i, names) for i in v) + "]"
+    return repr(v)
+
+
+def _resolve_names(
+    ts: ThingSetClient, ids: list, node_id: Union[int, None] = None
+) -> dict:
+    """Best-effort ``fetch(0x19, [ids])`` → ``{id: (name, type)}``.
+
+    Only runs for binary wire formats. ``node_id`` is required for CAN
+    (to build the ISO-TP request address) and ignored by TCP. Silently
+    returns {} on any failure so the caller falls back to raw IDs.
+    """
+    if ts.wire_format is not WireFormat.BINARY or not ids:
+        return {}
+    try:
+        resp = ts.fetch(_METADATA_OVERLAY_ID, ids, node_id)
+    except Exception:
+        return {}
+    if resp is None or resp.status_code is None or not resp.values:
+        return {}
+    out = {}
+    for idx, obj_id in enumerate(ids):
+        if idx >= len(resp.values):
+            break
+        md = resp.values[idx].value
+        if isinstance(md, dict):
+            name = md.get(_METADATA_NAME_KEY, "")
+            type_str = md.get(_METADATA_TYPE_KEY, "")
+            out[obj_id] = (name, type_str)
+    return out
+
+
+_NO_RESPONSE_HINTS = {
+    "get_root": (
+        "(no response — `get 0` returns the whole device which typically "
+        "exceeds the 4095-byte wire limit. Try `fetch 0` for root's child "
+        "IDs, or `get <id>` for a specific branch.)"
+    ),
+    "fetch_with_ids": (
+        "(no response — this firmware doesn't accept `fetch <parent> "
+        "<ids>` outside the 0x19 metadata overlay. Try `fetch <parent>` "
+        "for the child-ID list, or `get <parent>` for the whole group.)"
+    ),
+}
+
+
+def _print_response(
+    ts: ThingSetClient,
+    response,
+    op_hint: str = None,
+    node_id: Union[int, None] = None,
+) -> None:
+    if response is None:
+        return
+
+    if response.status_code is None:
+        print(_NO_RESPONSE_HINTS.get(op_hint, "(no response)"))
+        return
+
+    status_line = f"0x{response.status_code:02X} ({response.status_string})"
+
+    if not response.values:
+        print(status_line)
+        return
+
+    # Collect every int that might be a ThingSet ID we want to name:
+    # top-level value IDs, inner dict keys (group contents), and int
+    # entries in list values (children-fetch results). The metadata
+    # overlay returns results per-id; unresolvable ones simply don't
+    # appear in the names map, so decoration self-gates.
+    all_ids: set = set()
+    for v in response.values:
+        if isinstance(v.id, int):
+            all_ids.add(v.id)
+        if isinstance(v.value, dict):
+            for k in v.value:
+                if isinstance(k, int) and not isinstance(k, bool):
+                    all_ids.add(k)
+        elif isinstance(v.value, list) and v.value and all(
+            isinstance(x, int) and not isinstance(x, bool) for x in v.value
+        ):
+            all_ids.update(v.value)
+    names = (
+        _resolve_names(ts, sorted(all_ids), node_id) if all_ids else {}
+    )
+
+    print(status_line)
+    for v in response.values:
+        if isinstance(v.id, int) and v.id in names:
+            name, type_str = names[v.id]
+            label = f"0x{v.id:04X}"
+            if name:
+                label += f"  {name}"
+            if type_str:
+                label += f"  ({type_str})"
+            print(f"  {label}: {_fmt(v.value, names)}")
+        else:
+            print(f"  {v}")
+
+
+def _op_hint(args: argparse.Namespace) -> Union[str, None]:
+    """Classify the invocation so a helpful hint can accompany a
+    silent-timeout response."""
+    if args.method == "get":
+        try:
+            if int(args.id, 16) == 0:
+                return "get_root"
+        except (AttributeError, ValueError, TypeError):
+            pass
+    elif args.method == "fetch" and getattr(args, "value_ids", None):
+        return "fetch_with_ids"
+    return None
+
+
+def _node_id_for(args: argparse.Namespace) -> Union[int, None]:
+    """CAN needs the target node address for every RPC, including the
+    post-response metadata lookup. TCP/serial ignore this argument."""
+    if args.can_bus and args.target_address:
+        return int(args.target_address, 16)
+    return None
+
+
 def run_cli():
     args = setup_args()
     with _make_client(args) as ts:
         response = _dispatch(ts, args)
-
-    if response is not None:
-        print(response)
-
-        if response.values is not None:
-            for v in response.values:
-                print(v)
+        if response is not None:
+            _print_response(
+                ts,
+                response,
+                op_hint=_op_hint(args),
+                node_id=_node_id_for(args),
+            )
 
 
 if __name__ == "__main__":
