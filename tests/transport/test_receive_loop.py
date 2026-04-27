@@ -11,7 +11,6 @@ import threading
 import time
 from typing import Any, List
 
-import pytest
 
 from python_thingset.transport.transport import ThingSetTransport
 
