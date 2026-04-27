@@ -7,6 +7,11 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any
 
+from ..log import get_logger
+
+
+_logger = get_logger()
+
 
 class ThingSetTransport(ABC):
     """Abstract base class for ThingSet transport drivers.
@@ -32,10 +37,29 @@ class ThingSetTransport(ABC):
             self._thread.join()
 
     def _receive_loop(self) -> None:
+        # A single bad frame from the bus must not kill the receive
+        # thread — callers waiting on a response in get_response()
+        # would hang forever and the next reconnect would race against
+        # a still-running thread. Log and continue; if the underlying
+        # socket is permanently broken, receive() will keep raising
+        # and the caller's timeout will surface the failure.
         while self._running:
-            message = self.receive()
+            try:
+                message = self.receive()
+            except Exception as e:
+                _logger.warning(
+                    "%s receive raised %s: %s — continuing",
+                    type(self).__name__, e.__class__.__name__, e,
+                )
+                continue
             if message:
-                self._handle_message(message)
+                try:
+                    self._handle_message(message)
+                except Exception as e:
+                    _logger.warning(
+                        "%s handler raised %s: %s — continuing",
+                        type(self).__name__, e.__class__.__name__, e,
+                    )
 
     @abstractmethod
     def _handle_message(self, message: Any) -> None:
