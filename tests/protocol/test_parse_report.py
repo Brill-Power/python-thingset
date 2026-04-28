@@ -124,3 +124,46 @@ def test_values_empty_dict_is_valid():
     assert report is not None
     assert report.values == {}
     assert report.subset_id == 0x400
+
+
+# --- build_single_frame_report (CAN single-frame publishes) -----------
+
+def test_single_frame_round_trip_int():
+    payload = cbor2.dumps(42, canonical=True)
+    report = _protocol.build_single_frame_report(0x1001, payload)
+    assert report is not None
+    assert report.subset_id is None
+    assert report.eui is None
+    assert report.values == {0x1001: 42}
+
+
+def test_single_frame_round_trip_float():
+    payload = cbor2.dumps(3.14, canonical=True)
+    report = _protocol.build_single_frame_report(0x602, payload)
+    assert report.values == {0x602: 3.14}
+
+
+def test_single_frame_round_trip_string():
+    payload = cbor2.dumps("native_sim", canonical=True)
+    report = _protocol.build_single_frame_report(0xF03, payload)
+    assert report.values == {0xF03: "native_sim"}
+
+
+def test_single_frame_round_trip_array():
+    payload = cbor2.dumps([1, 2, 3, 4], canonical=True)
+    report = _protocol.build_single_frame_report(0xF05, payload)
+    assert report.values == {0xF05: [1, 2, 3, 4]}
+
+
+def test_single_frame_empty_payload_returns_none():
+    assert _protocol.build_single_frame_report(0x100, b"") is None
+
+
+def test_single_frame_malformed_cbor_returns_none():
+    assert _protocol.build_single_frame_report(0x100, bytes([0x1C])) is None
+
+
+def test_single_frame_text_wire_format_raises():
+    text = ThingSetProtocol(WireFormat.TEXT)
+    with pytest.raises(ValueError, match="binary only"):
+        text.build_single_frame_report(0x100, b"\x01")

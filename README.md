@@ -17,12 +17,13 @@ pip install python-thingset
 
 Each transport has its own constructor — there is no factory.
 
-| Wire          | Sync class       | Async class                |
-|---------------|------------------|----------------------------|
-| TCP/IP        | `ThingSetTCP`    | `AsyncThingSetTCP`         |
-| CAN + ISO-TP  | `ThingSetCAN`    | _(not planned)_            |
-| Serial        | `ThingSetSerial` | _(not planned)_            |
-| UDP (listen)  | _(none)_         | `AsyncThingSetUDPReceiver` |
+| Wire          | Sync class       | Async class                       |
+|---------------|------------------|-----------------------------------|
+| TCP/IP        | `ThingSetTCP`    | `AsyncThingSetTCP`                |
+| CAN + ISO-TP  | `ThingSetCAN`    | _(not planned)_                   |
+| CAN (listen)  | _(none)_         | `AsyncThingSetCANReportReceiver`  |
+| Serial        | `ThingSetSerial` | _(not planned)_                   |
+| UDP (listen)  | _(none)_         | `AsyncThingSetUDPReceiver`        |
 
 All classes are context managers; `with` / `async with` handles connection
 setup and tear-down.
@@ -140,6 +141,38 @@ reports from multiple publishers don't corrupt each other. The receive queue
 is bounded; on overflow the newest report is dropped rather than
 back-pressuring the event loop.
 
+### CAN report receiver
+
+Receives publish frames from ThingSet devices on a CAN bus. Both shapes are
+surfaced as `ThingSetReport`:
+
+- **Single-frame report** (`type=0x2`): the 16-bit data ID is embedded in the
+  CAN-ID; the payload is a bare CBOR-encoded value. Synthesised into a
+  `ThingSetReport` with `subset_id=None` and a one-entry `values` map.
+- **Multi-frame report** (`type=0x1`): chunks reassemble per-sender via
+  `msg#` and `seq#` in the CAN-ID. Carries `subset_id`, plus optional
+  `eui` for `0x1E` enhanced reports.
+
+```python
+import asyncio
+from python_thingset import AsyncThingSetCANReportReceiver
+
+async def main():
+    async with AsyncThingSetCANReportReceiver(bus="vcan0", fd=True) as receiver:
+        async for (source_addr, bus_name), report in receiver:
+            print(source_addr, report.subset_id, report.values)
+
+asyncio.run(main())
+```
+
+Reassembly buffers are keyed per source node address. On a sequence
+mismatch within an in-flight message the receiver skips the frame without
+advancing state — this matches the firmware-side reassembly behaviour and
+lets the receiver latch onto one stream even when a publisher interleaves
+two concurrent multi-frame reports with a shared `msg#`. `ThingSetReport`'s
+`subset_id` is therefore typed `int | None` (was `int` in 0.2.x) since
+single-frame reports don't carry one.
+
 ## Gateway forwarding
 
 A TCP client can address a CAN-side module behind an IP↔CAN gateway (e.g. an
@@ -207,6 +240,17 @@ transparently fetches through a gateway when a report carries a module EUI:
 python examples/async_udp_sniffer.py --decorate -v
 python examples/async_udp_sniffer.py --decorate --filter-eui badb1b0000000001
 python examples/async_udp_sniffer.py --decorate \
+    --record-fields examples/record_fields.example.json
+```
+
+A matching CAN sniffer prints publish frames as they arrive on a CAN
+interface. `--decorate` fetches each source node's schema over ISO-TP in
+the background and annotates printed IDs with their schema path:
+
+```sh
+python examples/async_can_sniffer.py -i vcan0 --source 10
+python examples/async_can_sniffer.py -i vcan0 --source 10 -v --decorate
+python examples/async_can_sniffer.py -i vcan0 --decorate \
     --record-fields examples/record_fields.example.json
 ```
 

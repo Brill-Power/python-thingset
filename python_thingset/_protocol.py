@@ -124,6 +124,31 @@ class ThingSetProtocol:
             return None
         return ThingSetReport(subset_id=subset_id, values=values, eui=eui)
 
+    def build_single_frame_report(
+        self, data_id: int, payload: bytes
+    ) -> Union[ThingSetReport, None]:
+        """Synthesize a report from a CAN single-frame publish.
+
+        On CAN, single-frame reports carry a single data ID in the
+        CAN arbitration ID and the bare CBOR-encoded value as payload
+        — no envelope byte, no subset id. We surface this through the
+        same ``ThingSetReport`` shape with ``subset_id=None`` and a
+        one-entry ``values`` map, so consumers can treat all reports
+        uniformly.
+
+        Returns ``None`` if the payload doesn't decode as a valid
+        single CBOR document.
+        """
+        if self.wire_format is not WireFormat.BINARY:
+            raise ValueError("build_single_frame_report is binary only")
+        if not payload:
+            return None
+        try:
+            value = cbor2.loads(payload)
+        except (cbor2.CBORDecodeError, cbor2.CBORDecodeEOF):
+            return None
+        return ThingSetReport(subset_id=None, values={data_id: value}, eui=None)
+
     def try_consume(self, buffer: bytes) -> Tuple[Union[ParsedResponse, None], int]:
         """Extract one complete binary response from the start of ``buffer``.
 
