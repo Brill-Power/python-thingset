@@ -16,7 +16,12 @@ _METADATA_OVERLAY = 0x19
 _METADATA_KEY_NAME = 26  # 0x1A
 _METADATA_KEY_TYPE = 27  # 0x1B
 _METADATA_KEY_ACCESS = 28  # 0x1C
-_RECURSIVE_TYPE = "group"
+# Types whose metadata advertises a parent node we can descend into.
+# "group" is the conventional namespace; "record"/"record[]" appear when
+# a property exposes a struct or array-of-struct (see TS++ ThingSetType.hpp:
+# the ThingSetType default is "record" and array suffixes append "[]"),
+# and the inner record members are registered as parent-scoped children.
+_RECURSIVE_TYPES = {"group", "record", "record[]"}
 
 
 class ThingSetClient(ABC):
@@ -146,7 +151,7 @@ class ThingSetClient(ABC):
             full_path = f"{path_prefix}/{name}" if path_prefix else name
 
             children: List[SchemaNode] = []
-            if type_str == _RECURSIVE_TYPE:
+            if type_str in _RECURSIVE_TYPES:
                 children = self._walk_schema(
                     cid, full_path, node_id, by_id, by_path
                 )
