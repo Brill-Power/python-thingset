@@ -9,8 +9,7 @@ description = "A Python library for ThingSet functionality"
 authors = [
     { name = "Adam Mitchell", email = "adam.mitchell@brillpower.com" }
 ]
-license = "Apache-2.0"
-license-files = [ "LICEN[CS]E*" ]
+license = { text = "Apache-2.0" }
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
