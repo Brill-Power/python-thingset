@@ -66,6 +66,14 @@ with ThingSetTCP("192.0.2.1") as client:
     client.exec(0x52, [])                         # HMCU/xSaveNVM()
 ```
 
+`update` also accepts list values, which are sent as a CBOR array (binary
+transports) or JSON array (text transport):
+
+```python
+with ThingSetTCP("192.0.2.1") as client:
+    client.update(0x70A, [3.7, 3.7, 3.6], parent_id=0x07)   # array of floats
+```
+
 ### CAN
 
 ```python
@@ -216,6 +224,27 @@ thingset schema            -i 192.0.2.1 -e badb1b0000000001
 thingset get    Metadata/rBoard -p /dev/ttyACM0
 thingset schema                 -p /dev/ttyACM0
 ```
+
+### List values
+
+`update` accepts a list either as multiple value tokens (one per element) or
+as a single JSON-array literal. The two forms are equivalent:
+
+```sh
+# Binary transports — parent_id value_id <values...>
+thingset update 7 70A 3.7 3.7 3.6   -i 192.0.2.1
+thingset update 7 70A '[3.7,3.7,3.6]' -i 192.0.2.1
+thingset update 7 70A 3.7 3.7 3.6   -c vcan0 -t 10
+
+# Serial (text) — path <values...>
+thingset update Module/aCells 3.7 3.7 3.6   -p /dev/ttyACM0
+thingset update Module/aCells '[3.7,3.7,3.6]' -p /dev/ttyACM0
+```
+
+On binary transports the list goes on the wire as a CBOR array; float
+elements are coerced to 32-bit so an embedded target sees `float[]`
+(not `double[]`). On serial it becomes a JSON array inside the text
+update payload.
 
 Output is decorated with names and types when the firmware exposes them via
 the metadata overlay:
