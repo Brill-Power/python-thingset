@@ -63,17 +63,29 @@ class ThingSetBinaryEncoder(object):
         )
 
     def encode_update(self, parent_id: int, value_id: int, value: Any) -> bytes:
-        if isinstance(value, float):
-            value = self.to_f32(value)
-        if isinstance(value, str):
-            if value.lower() == "true" or value.lower() == "false":
-                value = json.loads(value.lower())
+        value = self._coerce_value(value)
 
         return bytes(
             [ThingSetRequest.UPDATE]
             + list(cbor2.dumps(parent_id))
             + list(cbor2.dumps({value_id: value}, canonical=True))
         )
+
+    def _coerce_value(self, value: Any) -> Any:
+        """Recursively coerce a value for embedded targets: doubles → float32,
+        and ``"true"``/``"false"`` strings → bool. Lists are walked element-wise
+        so an array of floats round-trips as a CBOR array of float32s."""
+        if isinstance(value, list):
+            return [self._coerce_value(v) for v in value]
+        # bool is a subclass of int — keep as-is, don't coerce
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, float):
+            return self.to_f32(value)
+        if isinstance(value, str):
+            if value.lower() == "true" or value.lower() == "false":
+                return json.loads(value.lower())
+        return value
 
     def to_f32(self, value: float) -> float:
         """In Python, all floats are actually doubles. This does not map well to embedded targets where
