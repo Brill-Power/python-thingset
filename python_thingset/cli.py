@@ -6,8 +6,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 from time import sleep
-from typing import Union
+from typing import Any, Union
 
 from ._protocol import WireFormat
 from .client import ThingSetClient
@@ -34,6 +35,26 @@ def process_args(args: list) -> list:
         processed_args.append(a)
 
     return processed_args
+
+
+def _parse_update_value(tokens: list) -> Any:
+    """Convert the CLI's value tokens into the value to send.
+
+    - One token that starts with ``[`` is parsed as a JSON array.
+    - Two or more tokens become a list of typed values.
+    - A single non-JSON token becomes a scalar (int/float/str).
+    """
+    if len(tokens) == 1:
+        s = tokens[0].strip()
+        if s.startswith("["):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return process_args(tokens)[0]
+    return process_args(tokens)
 
 
 def get_schema(
@@ -175,9 +196,11 @@ def setup_args() -> argparse.Namespace:
     )
     update_parser.add_argument(
         "update_args",
-        help="If using -p/--port: path value - Path of value to update (example: "
-        "Module/sCanMaxLogLevel 3) (value is decimal if numeric). If using -c/--can-bus: "
-        "parent_id value_id value - (example: 0F F02 MyValue)",
+        help="If using -p/--port: path value [value ...] - Path of value to update (example: "
+        "Module/sCanMaxLogLevel 3). If using -c/--can-bus or -i/--ip: "
+        "parent_id value_id value [value ...] - (example: 0F F02 MyValue). "
+        "Multiple value tokens become a list; a single token starting with "
+        "'[' is parsed as a JSON array.",
         nargs="*",
     )
 
@@ -205,39 +228,42 @@ def setup_args() -> argparse.Namespace:
             arg_parser.error("-t/--target-address is required with -c/--can_bus")
 
         if args.method == "update":
-            if len(args.update_args) != 3:
+            if len(args.update_args) < 3:
                 arg_parser.error(
                     "When using update with -c/--can-bus you must suply a "
-                    "parent_id, value_id and value "
-                    "(example: thingset update f f03 MyValue -c vcan0"
+                    "parent_id, value_id and value (or values) "
+                    "(example: thingset update f f03 MyValue -c vcan0, or "
+                    "thingset update f f03 1.0 2.0 3.0 -c vcan0)"
                 )
             else:
                 args.parent_id = args.update_args[0]
                 args.value_id = args.update_args[1]
-                args.value = [args.update_args[2]]
+                args.value = _parse_update_value(args.update_args[2:])
     elif args.port:
         if args.method == "update":
-            if len(args.update_args) != 2:
+            if len(args.update_args) < 2:
                 arg_parser.error(
                     "When using update with -p/--port you must suply a path "
-                    "and a value (example: "
-                    "thingset update Module/sCanMaxLogLevel 4 -p /dev/pts/5"
+                    "and a value (or values) (example: "
+                    "thingset update Module/sCanMaxLogLevel 4 -p /dev/pts/5, "
+                    "or thingset update Module/aFloats 1.0 2.0 3.0 -p /dev/pts/5)"
                 )
             else:
                 args.parent_id = args.update_args[0]
-                args.value = [args.update_args[1]]
+                args.value = _parse_update_value(args.update_args[1:])
     elif args.ip:
         if args.method == "update":
-            if len(args.update_args) != 3:
+            if len(args.update_args) < 3:
                 arg_parser.error(
                     "When using update with -i/--ip you must suply a "
-                    "parent_id, value_id and value "
-                    "(example: thingset update f f03 MyValue -i 192.0.2.1"
+                    "parent_id, value_id and value (or values) "
+                    "(example: thingset update f f03 MyValue -i 192.0.2.1, or "
+                    "thingset update f f03 1.0 2.0 3.0 -i 192.0.2.1)"
                 )
             else:
                 args.parent_id = args.update_args[0]
                 args.value_id = args.update_args[1]
-                args.value = [args.update_args[2]]
+                args.value = _parse_update_value(args.update_args[2:])
 
     if not (args.can_bus or args.port or args.ip):
         arg_parser.error("One of -c/--can_bus, -i/--ip or -p/--port is required")
@@ -295,16 +321,15 @@ def _dispatch(ts: ThingSetClient, args: argparse.Namespace):
         case "update":
             if is_serial:
                 return ts.update(args.parent_id, args.value)
-            p_args = process_args(args.value)
             if is_tcp:
                 return ts.update(
                     int(args.value_id, 16),
-                    p_args[0],
+                    args.value,
                     parent_id=int(args.parent_id, 16),
                 )
             return ts.update(
                 int(args.value_id, 16),
-                p_args[0],
+                args.value,
                 int(args.target_address, 16),
                 int(args.parent_id, 16),
             )

@@ -48,18 +48,17 @@ class ThingSetTextEncoder(object):
 
     def encode_update(self, parent_id: None, value_id: str, value: Any) -> bytes:
         """properly format strings for transmission, add args to stringified list"""
-        value = value[0]
+        # Legacy CLI convention: scalars are wrapped in a single-element list
+        # before being passed in. Unwrap so the wire format stays scalar.
+        # Multi-element or nested lists fall through and become JSON arrays.
+        if (
+            isinstance(value, list)
+            and len(value) == 1
+            and not isinstance(value[0], list)
+        ):
+            value = value[0]
 
-        val = None
-
-        if isinstance(value, int):
-            val = int(value)
-
-        if isinstance(value, float):
-            val = float(value)
-
-        if val is None:
-            val = f'\\"{value}\\"'
+        val = self._encode_value(value)
 
         path = " "
         value_name = None
@@ -76,3 +75,14 @@ class ThingSetTextEncoder(object):
         value_path = value_path.replace("£", "{").replace("$", "}")
 
         return f"""thingset ={value_path}\n""".encode()
+
+    def _encode_value(self, value: Any) -> str:
+        """Render a single value for the text wire format."""
+        # bool is a subclass of int — check it first
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, list):
+            return "[" + ",".join(self._encode_value(v) for v in value) + "]"
+        if isinstance(value, (int, float)):
+            return str(value)
+        return f'\\"{value}\\"'
