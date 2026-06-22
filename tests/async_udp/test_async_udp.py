@@ -284,3 +284,34 @@ async def test_queue_full_drops_overflow():
         assert {r.subset_id for _, r in got} <= {0, 1, 2, 3, 4}
     finally:
         await receiver.close()
+
+
+async def test_receiver_enlarges_rcvbuf():
+    """The receiver requests a large SO_RCVBUF so bursts of big reports from a
+    fleet of gateways aren't dropped before they're drained. We can't guarantee
+    the full request (the kernel caps at net.core.rmem_max without CAP_NET_ADMIN),
+    but it must be at least as large as an untuned socket's default."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as baseline:
+        default_rcvbuf = baseline.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+
+    receiver = AsyncThingSetUDPReceiver(bind="127.0.0.1", port=0)
+    await receiver.start()
+    try:
+        sock = receiver._transport.get_extra_info("socket")
+        assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF) >= default_rcvbuf
+    finally:
+        await receiver.close()
+
+
+async def test_rcvbuf_zero_leaves_default():
+    """rcvbuf_bytes=0 opts out of the resize (keeps the system default)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as baseline:
+        default_rcvbuf = baseline.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+
+    receiver = AsyncThingSetUDPReceiver(bind="127.0.0.1", port=0, rcvbuf_bytes=0)
+    await receiver.start()
+    try:
+        sock = receiver._transport.get_extra_info("socket")
+        assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF) == default_rcvbuf
+    finally:
+        await receiver.close()

@@ -39,6 +39,9 @@ from ..report import ThingSetReport
 logger = get_logger()
 
 
+# Kernel receive-buffer target
+DEFAULT_RCVBUF_BYTES = 8 * 1024 * 1024  # 8 MiB
+
 # UDP fragmentation framing (per ThingSet.Net/Protocol.cs)
 _MSG_TYPE_FIRST = 0x00
 _MSG_TYPE_CONSECUTIVE = 0x10
@@ -139,10 +142,12 @@ class AsyncThingSetUDPReceiver:
         bind: str = "0.0.0.0",
         port: int = DEFAULT_PORT,
         queue_size: int = DEFAULT_QUEUE_SIZE,
+        rcvbuf_bytes: int = DEFAULT_RCVBUF_BYTES,
     ) -> None:
         self._bind = bind
         self._port = port
         self._queue_size = queue_size
+        self._rcvbuf_bytes = rcvbuf_bytes
         self._protocol = ThingSetProtocol(WireFormat.BINARY)
         self._queue: "asyncio.Queue[Tuple[Tuple[str, int], ThingSetReport]]" = (
             asyncio.Queue(maxsize=queue_size)
@@ -163,12 +168,48 @@ class AsyncThingSetUDPReceiver:
                 sock.setsockopt(socket.SOL_SOCKET, reuseport, 1)
             except OSError:
                 pass
+        self._enlarge_rcvbuf(sock)
         sock.bind((self._bind, self._port))
         sock.setblocking(False)
         self._transport, _ = await loop.create_datagram_endpoint(
             lambda: _UdpReceiverProtocol(self._queue, self._protocol),
             sock=sock,
         )
+
+    def _enlarge_rcvbuf(self, sock: socket.socket) -> None:
+        """Request a large kernel receive buffer so a burst of big reports from
+        many gateways isn't dropped before we drain it (see DEFAULT_RCVBUF_BYTES).
+
+        The kernel caps SO_RCVBUF at ``net.core.rmem_max`` and reports back ~2×
+        the granted size. If the plain request is capped short we try the
+        privileged SO_RCVBUFFORCE (needs CAP_NET_ADMIN — available to a
+        host-networked container running as root), then warn with a tuning hint.
+        """
+        if not self._rcvbuf_bytes:
+            return
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self._rcvbuf_bytes)
+        except OSError as exc:
+            logger.warning("could not set SO_RCVBUF=%d: %s", self._rcvbuf_bytes, exc)
+            return
+        actual = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+        if actual < self._rcvbuf_bytes:
+            force = getattr(socket, "SO_RCVBUFFORCE", None)
+            if force is not None:
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, force, self._rcvbuf_bytes)
+                    actual = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+                except OSError:
+                    pass
+        if actual < self._rcvbuf_bytes:
+            logger.warning(
+                "UDP SO_RCVBUF capped at %d B (requested %d) — raise "
+                "net.core.rmem_max to avoid dropped reports under load",
+                actual,
+                self._rcvbuf_bytes,
+            )
+        else:
+            logger.info("UDP SO_RCVBUF set to %d B", actual)
 
     async def close(self) -> None:
         if self._transport is None:

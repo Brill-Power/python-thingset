@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "python_thingset"
-version = "0.4.0"
+version = "0.4.1"
 description = "A Python library for ThingSet functionality"
 authors = [
     { name = "Adam Mitchell", email = "adam.mitchell@brillpower.com" }
