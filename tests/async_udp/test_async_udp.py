@@ -315,3 +315,33 @@ async def test_rcvbuf_zero_leaves_default():
         assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF) == default_rcvbuf
     finally:
         await receiver.close()
+
+
+async def test_dropped_counts_queue_overflow():
+    """Reports arriving faster than the consumer drains are dropped once the
+    internal queue is full — the ``dropped`` counter must record each one so
+    applications can surface the loss in their health output."""
+    receiver = AsyncThingSetUDPReceiver(bind="127.0.0.1", port=0, queue_size=1)
+    await receiver.start()
+    port = receiver._transport.get_extra_info("sockname")[1]
+    try:
+        assert receiver.dropped == 0
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            for i in range(3):  # nothing consuming: 1 queued, 2 dropped
+                body = _standard_report_body(0x400, {0x1001: i})
+                _send(s, port, _frame(body, _MSG_TYPE_SINGLE, 0, i))
+        # Let the datagrams reach datagram_received on the loop.
+        for _ in range(50):
+            if receiver.dropped >= 2:
+                break
+            await asyncio.sleep(0.01)
+        assert receiver.dropped == 2
+        _, report = await _next_with_timeout(receiver)
+        assert report.values == {0x1001: 0}  # the first report survived, in order
+    finally:
+        await receiver.close()
+
+
+async def test_dropped_is_zero_before_start():
+    receiver = AsyncThingSetUDPReceiver(bind="127.0.0.1", port=0)
+    assert receiver.dropped == 0

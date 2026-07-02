@@ -76,6 +76,10 @@ class _UdpReceiverProtocol(asyncio.DatagramProtocol):
         self._queue = queue
         self._protocol = protocol
         self._buffers: Dict[Tuple[str, int], _ReassemblyBuffer] = {}
+        # Reports dropped because the consumer queue was full (consumer slower
+        # than the arrival rate). Cumulative; surfaced via the receiver's
+        # ``dropped`` property so applications can report it in health output.
+        self.dropped = 0
 
     def datagram_received(
         self, data: bytes, addr: Tuple[str, int]
@@ -120,8 +124,12 @@ class _UdpReceiverProtocol(asyncio.DatagramProtocol):
             try:
                 self._queue.put_nowait((addr, report))
             except asyncio.QueueFull:
+                self.dropped += 1
                 logger.warning(
-                    "ThingSet UDP queue full; dropping report from %s", addr
+                    "ThingSet UDP queue full; dropping report from %s "
+                    "(%d dropped total)",
+                    addr,
+                    self.dropped,
                 )
 
 
@@ -153,6 +161,7 @@ class AsyncThingSetUDPReceiver:
             asyncio.Queue(maxsize=queue_size)
         )
         self._transport: Union[asyncio.DatagramTransport, None] = None
+        self._receiver_protocol: Union[_UdpReceiverProtocol, None] = None
 
     async def start(self) -> None:
         if self._transport is not None:
@@ -171,10 +180,19 @@ class AsyncThingSetUDPReceiver:
         self._enlarge_rcvbuf(sock)
         sock.bind((self._bind, self._port))
         sock.setblocking(False)
-        self._transport, _ = await loop.create_datagram_endpoint(
+        self._transport, self._receiver_protocol = await loop.create_datagram_endpoint(
             lambda: _UdpReceiverProtocol(self._queue, self._protocol),
             sock=sock,
         )
+
+    @property
+    def dropped(self) -> int:
+        """Reports dropped because the consumer queue was full (cumulative).
+
+        Zero before :meth:`start`. Kernel-level drops (SO_RCVBUF overflow) are
+        not visible here — check ``ss -u`` / netstat UDP stats for those.
+        """
+        return self._receiver_protocol.dropped if self._receiver_protocol is not None else 0
 
     def _enlarge_rcvbuf(self, sock: socket.socket) -> None:
         """Request a large kernel receive buffer so a burst of big reports from
