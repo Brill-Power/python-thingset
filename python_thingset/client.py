@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Union
 
 from ._protocol import ParsedResponse, ThingSetProtocol, WireFormat
 from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
-from .schema import SchemaNode, SchemaTree
+from .schema import SchemaNode, SchemaTree, is_executable_type
 
 
 # Binary ThingSet metadata overlay (used by discover_schema)
@@ -21,6 +21,10 @@ _METADATA_KEY_ACCESS = 28  # 0x1C
 # a property exposes a struct or array-of-struct (see TS++ ThingSetType.hpp:
 # the ThingSetType default is "record" and array suffixes append "[]"),
 # and the inner record members are registered as parent-scoped children.
+# Executables are also parents: TS++ registers each function argument as
+# a child node of the function (ThingSetFunction.hpp), so they are walked
+# too — via is_executable_type, since their type is a signature, not a
+# fixed string.
 _RECURSIVE_TYPES = {"group", "record", "record[]"}
 
 
@@ -106,8 +110,8 @@ class ThingSetClient(ABC):
         Issues two fetches per group: one for child IDs, one for the
         metadata overlay (which carries name, type and access for every
         child in a single round-trip). Recursion is bounded by type:
-        only children whose type is ``"group"`` are walked further;
-        records, functions and primitives are terminal.
+        groups, records and executables are walked further (a function's
+        arguments are its children); primitives are terminal.
 
         Binary wire format only — raises ``ValueError`` on text
         transports, which lack the metadata overlay.
@@ -151,7 +155,7 @@ class ThingSetClient(ABC):
             full_path = f"{path_prefix}/{name}" if path_prefix else name
 
             children: List[SchemaNode] = []
-            if type_str in _RECURSIVE_TYPES:
+            if type_str in _RECURSIVE_TYPES or is_executable_type(type_str):
                 children = self._walk_schema(
                     cid, full_path, node_id, by_id, by_path
                 )

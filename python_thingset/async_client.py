@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Union
 
 from ._protocol import ParsedResponse, ThingSetProtocol, WireFormat
 from .response import ThingSetResponse, ThingSetStatus, ThingSetValue
-from .schema import SchemaNode, SchemaTree
+from .schema import SchemaNode, SchemaTree, is_executable_type
 
 
 # Binary ThingSet metadata overlay (used by discover_schema)
@@ -30,6 +30,8 @@ _METADATA_OVERLAY = 0x19
 _METADATA_KEY_NAME = 26  # 0x1A
 _METADATA_KEY_TYPE = 27  # 0x1B
 _METADATA_KEY_ACCESS = 28  # 0x1C
+# Executables are walked too (via is_executable_type): TS++ registers each
+# function argument as a child node of the function (ThingSetFunction.hpp).
 _RECURSIVE_TYPE = "group"
 
 
@@ -144,7 +146,7 @@ class AsyncThingSetClient(ABC):
             full_path = f"{path_prefix}/{name}" if path_prefix else name
 
             children: List[SchemaNode] = []
-            if type_str == _RECURSIVE_TYPE:
+            if type_str == _RECURSIVE_TYPE or is_executable_type(type_str):
                 children = await self._walk_schema(
                     cid, full_path, node_id, by_id, by_path
                 )
