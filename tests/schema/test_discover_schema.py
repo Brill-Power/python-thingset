@@ -83,11 +83,19 @@ CANNED: CannedMap = {
         {26: "Modules", 27: "record[]", 28: 7},
         {26: "xRebootDFU", 27: "()->(i32)", 28: 112},
     ],
-    # DSM: one function + one primitive leaf
-    (0x0E, ()): [0xE00, 0xE04],
-    (0x19, (0xE00, 0xE04)): [
+    # DSM: two functions (with and without arguments) + one primitive leaf
+    (0x0E, ()): [0xE00, 0xE04, 0xE06],
+    (0x19, (0xE00, 0xE04, 0xE06)): [
         {26: "xOff", 27: "()->(i32)", 28: 112},
         {26: "rDFUState", 27: "u8", 28: 7},
+        {26: "xOn", 27: "(u16)->(i32)", 28: 112},
+    ],
+    # xOff takes no arguments — child fetch on it returns an empty list
+    (0xE00, ()): [],
+    # xOn's argument rides as a child node (TS++ auto-names it xOnu16_1)
+    (0xE06, ()): [0xE07],
+    (0x19, (0xE07,)): [
+        {26: "xOnu16_1", 27: "u16", 28: 112},
     ],
     # Metadata: one nested group + one primitive leaf
     (0x0F, ()): [0xFFF, 0xF03],
@@ -111,7 +119,7 @@ def tree() -> SchemaTree:
 def test_all_expected_ids_discovered(tree: SchemaTree):
     assert set(tree.by_id.keys()) == {
         0x0E, 0x0F, 0x09, 0x67,
-        0xE00, 0xE04,
+        0xE00, 0xE04, 0xE06, 0xE07,
         0xFFF, 0xF03,
         0xFF0,
     }
@@ -136,13 +144,24 @@ def test_node_fields_populated(tree: SchemaTree):
 def test_group_has_children(tree: SchemaTree):
     dsm = tree.by_id[0x0E]
     assert dsm.type == "group"
-    assert [c.id for c in dsm.children] == [0xE00, 0xE04]
+    assert [c.id for c in dsm.children] == [0xE00, 0xE04, 0xE06]
 
 
-def test_record_and_function_not_recursed(tree: SchemaTree):
-    """record[] and function types are terminal — no children walked even if the device would have returned some."""
-    assert tree.by_id[0x09].type == "record[]"
-    assert tree.by_id[0x09].children == []
+def test_function_arguments_discovered(tree: SchemaTree):
+    """A function's arguments are its schema children (TS++ registers
+    each argument as a child node of the executable)."""
+    fn = tree.by_path["DSM/xOn"]
+    assert fn.type == "(u16)->(i32)"
+    assert [c.id for c in fn.children] == [0xE07]
+    arg = tree.by_path["DSM/xOn/xOnu16_1"]
+    assert arg.type == "u16"
+    assert tree.by_id[0xE07] is arg
+
+
+def test_function_without_arguments_has_no_children(tree: SchemaTree):
+    # xOff answers the child fetch with an empty list; xRebootDFU's
+    # canned map has no entry at all (device returns nothing useful)
+    assert tree.by_path["DSM/xOff"].children == []
     assert tree.by_id[0x67].type == "()->(i32)"
     assert tree.by_id[0x67].children == []
 
@@ -155,9 +174,10 @@ def test_nested_group_recursed(tree: SchemaTree):
 
 def test_flat_iteration_in_discovery_order(tree: SchemaTree):
     ids_in_order = [n.id for n in tree]
-    # Depth-first: DSM, xOff, rDFUState, Metadata, Nested, rDeep, rBoard, Modules, xRebootDFU
+    # Depth-first: DSM, xOff, rDFUState, xOn, xOnu16_1, Metadata, Nested,
+    # rDeep, rBoard, Modules, xRebootDFU
     assert ids_in_order == [
-        0x0E, 0xE00, 0xE04,
+        0x0E, 0xE00, 0xE04, 0xE06, 0xE07,
         0x0F, 0xFFF, 0xFF0, 0xF03,
         0x09, 0x67,
     ]
@@ -173,6 +193,22 @@ def test_root_list_only_top_level(tree: SchemaTree):
 
 def test_node_str_repr(tree: SchemaTree):
     assert str(tree.by_id[0xE04]) == "0x0E04  DSM/rDFUState  (u8)"
+
+
+def test_is_executable_type():
+    from python_thingset import is_executable_type
+
+    # ThingSet++ signature style
+    assert is_executable_type("()->(i32)")
+    assert is_executable_type("(u16)->(i32)")
+    # thingset-node-c style
+    assert is_executable_type("fn void")
+    assert is_executable_type("fn i32")
+    # non-executables
+    assert not is_executable_type("group")
+    assert not is_executable_type("record[]")
+    assert not is_executable_type("u16")
+    assert not is_executable_type("")
 
 
 def test_text_wire_format_raises():

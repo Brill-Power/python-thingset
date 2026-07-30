@@ -221,10 +221,18 @@ async def test_discover_schema_end_to_end():
                 {26: "Metadata", 27: "group", 28: 7},
             ]),
         _protocol.encode_fetch(0x0E, []):
-            _bin_response(ThingSetStatus.CONTENT, [0xE04]),
-        _protocol.encode_fetch(0x19, [0xE04]):
+            _bin_response(ThingSetStatus.CONTENT, [0xE04, 0xE06]),
+        _protocol.encode_fetch(0x19, [0xE04, 0xE06]):
             _bin_response(ThingSetStatus.CONTENT, [
                 {26: "rDFUState", 27: "u8", 28: 7},
+                {26: "xOn", 27: "(u16)->(i32)", 28: 112},
+            ]),
+        # executables are walked too: xOn's u16 argument is its child node
+        _protocol.encode_fetch(0xE06, []):
+            _bin_response(ThingSetStatus.CONTENT, [0xE07]),
+        _protocol.encode_fetch(0x19, [0xE07]):
+            _bin_response(ThingSetStatus.CONTENT, [
+                {26: "xOnu16_1", 27: "u16", 28: 112},
             ]),
         _protocol.encode_fetch(0x0F, []):
             _bin_response(ThingSetStatus.CONTENT, [0xF03]),
@@ -237,10 +245,14 @@ async def test_discover_schema_end_to_end():
         async with AsyncThingSetTCP("127.0.0.1", port=server.port) as client:
             tree = await client.discover_schema()
 
-    assert set(tree.by_id.keys()) == {0x0E, 0xE04, 0x0F, 0xF03}
+    assert set(tree.by_id.keys()) == {0x0E, 0xE04, 0xE06, 0xE07, 0x0F, 0xF03}
     assert tree.by_path["DSM/rDFUState"].id == 0xE04
     assert tree.by_path["Metadata/rBoard"].id == 0xF03
     assert tree.by_path["Metadata/rBoard"].type == "string"
+    fn = tree.by_path["DSM/xOn"]
+    assert fn.type == "(u16)->(i32)"
+    assert [c.path for c in fn.children] == ["DSM/xOn/xOnu16_1"]
+    assert tree.by_path["DSM/xOn/xOnu16_1"].type == "u16"
 
 
 async def test_rpc_before_connect_raises():

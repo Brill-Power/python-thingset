@@ -2,7 +2,7 @@ from ._protocol import ParsedResponse, ThingSetProtocol, WireFormat
 from .async_client import AsyncThingSetClient
 from .report import ThingSetReport
 from .response import ThingSetRequest, ThingSetResponse, ThingSetStatus, ThingSetValue
-from .schema import SchemaNode, SchemaTree
+from .schema import SchemaNode, SchemaTree, is_executable_type
 from .transport import ThingSetCAN, ThingSetSerial, ThingSetTCP, ThingSetTransport
 from .transport.async_can import AsyncThingSetCANReportReceiver
 from .transport.async_tcp import AsyncThingSetTCP
@@ -27,4 +27,5 @@ __all__ = [
     "ThingSetTransport",
     "ThingSetValue",
     "WireFormat",
+    "is_executable_type",
 ]

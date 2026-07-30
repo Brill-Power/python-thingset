@@ -14,6 +14,15 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterator, List
 
 
+def is_executable_type(type_str: str) -> bool:
+    """True if a metadata type string denotes an executable (function) node.
+
+    ThingSet++ renders function types as signatures like ``"(u16)->(i32)"``;
+    thingset-node-c renders them as ``"fn i32"`` / ``"fn void"``.
+    """
+    return type_str.startswith("(") or type_str.startswith("fn")
+
+
 @dataclass
 class SchemaNode:
     id: int
