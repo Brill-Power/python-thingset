@@ -352,3 +352,28 @@ async def test_forwarding_discover_schema_is_transparent():
             tree = await client.discover_schema()
     assert set(tree.by_id.keys()) == {0x0E, 0xE04}
     assert tree.by_path["OnlyGroup/Leaf"].type == "u8"
+
+
+async def test_connect_timeout_raises_on_unroutable_host():
+    """A short connect_timeout bounds a connect to a black-hole address
+    (a routable-but-silent IP that drops SYNs), so a caller polling for a
+    rebooting device fails fast instead of blocking on the OS default.
+    192.0.2.1 is TEST-NET-1 (RFC 5737): guaranteed no listener/route."""
+    client = AsyncThingSetTCP("192.0.2.1", port=9001, connect_timeout=0.25)
+    with pytest.raises((asyncio.TimeoutError, OSError)):
+        await client.connect()
+    await client.close()
+
+
+async def test_connect_timeout_not_hit_on_fast_connect():
+    """When the peer accepts promptly, a generous connect_timeout is a
+    no-op — the normal request/response path is unaffected."""
+    responses = {
+        _protocol.encode_get(0x00): _bin_response(ThingSetStatus.CONTENT, 42),
+    }
+    async with _CannedServer(responses) as server:
+        async with AsyncThingSetTCP(
+            "127.0.0.1", port=server.port, connect_timeout=5.0
+        ) as client:
+            r = await client.get(0x00)
+    assert r.data == 42

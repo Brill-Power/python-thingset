@@ -37,6 +37,7 @@ class AsyncThingSetTCP(AsyncThingSetClient):
         timeout: float = DEFAULT_TIMEOUT_S,
         *,
         target_eui: Union[int, None] = None,
+        connect_timeout: Union[float, None] = None,
     ):
         """Connect to a ThingSet device over TCP with asyncio.
 
@@ -45,11 +46,19 @@ class AsyncThingSetTCP(AsyncThingSetClient):
         IP↔CAN gateway such as an HMCU) routes it to the CAN-side
         module with that EUI-64. Responses come back unwrapped; the
         caller API is unchanged.
+
+        ``connect_timeout`` bounds the TCP connect: without it,
+        connecting to a host that silently drops SYNs (e.g. a device
+        mid-reboot) blocks on the OS default for tens of seconds. A
+        short bound lets a caller poll rapidly for a device to come
+        back — a connect that exceeds it raises ``asyncio.TimeoutError``
+        like any other failed connect. ``None`` keeps the OS default.
         """
         self._protocol = ThingSetProtocol(WireFormat.BINARY)
         self._address = address
         self._port = port
         self._timeout = timeout
+        self._connect_timeout = connect_timeout
         self._target_eui = target_eui
         self._reader: Union[asyncio.StreamReader, None] = None
         self._writer: Union[asyncio.StreamWriter, None] = None
@@ -61,9 +70,10 @@ class AsyncThingSetTCP(AsyncThingSetClient):
     async def connect(self) -> None:
         if self._writer is not None:
             return
-        self._reader, self._writer = await asyncio.open_connection(
-            self._address, self._port
-        )
+        opened = asyncio.open_connection(self._address, self._port)
+        if self._connect_timeout is not None:
+            opened = asyncio.wait_for(opened, timeout=self._connect_timeout)
+        self._reader, self._writer = await opened
         self._reader_task = asyncio.create_task(
             self._reader_loop(), name=f"thingset-rx-{self._address}"
         )
