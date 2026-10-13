@@ -14,6 +14,7 @@ from ..response import ThingSetRequest
 
 class ThingSetBinaryEncoder(object):
     NULL_BYTE = 0xF6
+    ROOT_ID   = 0x00
 
     def __init__(self):
         pass
@@ -62,7 +63,17 @@ class ThingSetBinaryEncoder(object):
             + list(cbor2.dumps(p_args, canonical=True))
         )
 
-    def encode_update(self, parent_id: int, value_id: int, value: Any) -> bytes:
+    def encode_update(
+        self, parent_id: Union[int, None], value_id: int, value: Any
+    ) -> bytes:
+        """Update request: ``07 <parent id> {value_id: value}``.
+
+        ``parent_id`` is the containing group; ``None`` means the object sits
+        at the root and is addressed via the root node (ID 0). A CBOR null is
+        never a valid endpoint — the device rejects it with BAD_REQUEST before
+        looking at the map — so it must not be emitted for a missing parent."""
+        if parent_id is None:
+            parent_id = self.ROOT_ID
         value = self._coerce_value(value)
 
         return bytes(
