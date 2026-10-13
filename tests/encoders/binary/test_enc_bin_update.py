@@ -62,3 +62,16 @@ def test_update_list_of_strings():
     encoded = encoder.encode_update(0x0, 0x4F, ["a", "b"])
     expected = bytes([0x07]) + cbor2.dumps(0x0) + cbor2.dumps({0x4F: ["a", "b"]}, canonical=True)
     assert encoded == expected
+
+
+def test_update_no_parent_targets_root():
+    # A root-level object has no containing group: the request must address
+    # the root node (ID 0), never a CBOR null endpoint.
+    encoded = encoder.encode_update(None, 0x4F, 1)
+    assert encoded == encoder.encode_update(0x0, 0x4F, 1)
+    assert encoded[1] == 0x00
+
+
+def test_update_native_bool_false():
+    encoded = encoder.encode_update(0x0, 0x4F, False)
+    assert encoded == b"\x07\x00\xa1\x18\x4f\xf4"
