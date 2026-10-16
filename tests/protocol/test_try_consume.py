@@ -13,10 +13,47 @@ def test_empty_buffer_returns_none():
     assert consumed == 0
 
 
-def test_one_byte_needs_more_data():
+def test_one_success_byte_needs_more_data():
+    """A success status always carries 0xf6 and/or a CBOR document."""
     resp, consumed = _mk().try_consume(b"\x85")
     assert resp is None
     assert consumed == 0
+
+
+def test_lone_error_status_is_complete():
+    """ThingSet++ answers errors with the bare status byte: nothing follows,
+    so a lone error byte must parse now rather than wait (and time out)."""
+    for status in (
+        ThingSetStatus.BAD_REQUEST,
+        ThingSetStatus.NOT_FOUND,
+        ThingSetStatus.GATEWAY_TIMEOUT,
+        ThingSetStatus.NOT_GATEWAY,
+    ):
+        resp, consumed = _mk().try_consume(bytes([status]))
+        assert resp is not None
+        assert consumed == 1
+        assert resp.status_code == status
+        assert resp.data is None
+
+
+def test_error_status_with_marker_still_consumes_marker():
+    """thingset-node-c sends errors as status + 0xf6 (+ optional message):
+    when both bytes are already in the buffer the marker is consumed too."""
+    resp, consumed = _mk().try_consume(b"\xa4\xf6")
+    assert resp is not None
+    assert consumed == 2
+    assert resp.status_code == ThingSetStatus.NOT_FOUND
+    assert resp.data is None
+
+
+def test_error_status_with_message_payload():
+    payload = cbor2.dumps("no such node", canonical=True)
+    buf = b"\xa4\xf6" + payload
+    resp, consumed = _mk().try_consume(buf)
+    assert resp is not None
+    assert consumed == len(buf)
+    assert resp.status_code == ThingSetStatus.NOT_FOUND
+    assert resp.data == "no such node"
 
 
 def test_status_plus_null_marker_only():

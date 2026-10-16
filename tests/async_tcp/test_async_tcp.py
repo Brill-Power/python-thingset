@@ -377,3 +377,36 @@ async def test_connect_timeout_not_hit_on_fast_connect():
         ) as client:
             r = await client.get(0x00)
     assert r.data == 42
+
+
+async def test_bare_error_status_reply_is_parsed_without_timeout():
+    """ThingSet++ answers an error with ONE byte (no 0xf6, no payload). That
+    must come back as that status immediately, not as a timeout: an HMCU that
+    cannot reach a gateway-forwarded child replies 0xC4 this way, and callers
+    use the status to fail fast."""
+    request = _protocol.encode_get(0xF03)
+    async with _CannedServer({request: bytes([ThingSetStatus.GATEWAY_TIMEOUT])}) as server:
+        async with AsyncThingSetTCP("127.0.0.1", port=server.port, timeout=2.0) as client:
+            started = asyncio.get_running_loop().time()
+            r = await client.get(0xF03)
+            elapsed = asyncio.get_running_loop().time() - started
+    assert r.status_code == ThingSetStatus.GATEWAY_TIMEOUT
+    assert r.data is None
+    assert r.values == []
+    assert elapsed < 1.0  # well inside the 2 s timeout: parsed, not timed out
+
+
+async def test_bare_error_status_reply_via_gateway_forward():
+    """Same, through the forward envelope: the gateway strips the envelope
+    and relays the child's reply (or its own 0xC4) unwrapped."""
+    eui = 0xAD76807C58EC545D
+    request = _protocol.encode_get(0xF03)
+    async with _CannedServer(
+        {request: bytes([ThingSetStatus.NOT_FOUND])}, expect_forward_eui=eui
+    ) as server:
+        async with AsyncThingSetTCP(
+            "127.0.0.1", port=server.port, timeout=2.0, target_eui=eui
+        ) as client:
+            r = await client.get(0xF03)
+    assert r.status_code == ThingSetStatus.NOT_FOUND
+    assert r.data is None
