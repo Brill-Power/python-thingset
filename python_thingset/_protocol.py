@@ -163,6 +163,9 @@ class ThingSetProtocol:
         if self.wire_format is not WireFormat.BINARY:
             raise ValueError("try_consume is binary only")
         if len(buffer) < 2:
+            # A lone error status byte can be a complete repsonse
+            if len(buffer) == 1 and buffer[0] >= ThingSetStatus.BAD_REQUEST:
+                return self._parse_binary(buffer[:1]), 1
             return None, 0
 
         offset = 1  # status byte
