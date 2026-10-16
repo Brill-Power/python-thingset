@@ -381,9 +381,9 @@ async def test_connect_timeout_not_hit_on_fast_connect():
 
 async def test_bare_error_status_reply_is_parsed_without_timeout():
     """ThingSet++ answers an error with ONE byte (no 0xf6, no payload). That
-    must come back as that status immediately, not as a timeout: an HMCU that
-    cannot reach a gateway-forwarded child replies 0xC4 this way, and callers
-    use the status to fail fast."""
+    must come back as that status immediately, not as a timeout: a gateway that
+    cannot reach a forwarded child replies 0xC4 this way, and callers use the
+    status to fail fast."""
     request = _protocol.encode_get(0xF03)
     async with _CannedServer({request: bytes([ThingSetStatus.GATEWAY_TIMEOUT])}) as server:
         async with AsyncThingSetTCP("127.0.0.1", port=server.port, timeout=2.0) as client:

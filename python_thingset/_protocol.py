@@ -163,14 +163,7 @@ class ThingSetProtocol:
         if self.wire_format is not WireFormat.BINARY:
             raise ValueError("try_consume is binary only")
         if len(buffer) < 2:
-            # A lone ERROR status byte is a complete response: ThingSet++
-            # firmware (HMCU/ACMU/DMU) answers NOT_FOUND, GATEWAY_TIMEOUT,
-            # NOT_GATEWAY, ... with just the status byte -- no 0xf6 marker
-            # and never a payload -- so waiting for a second byte turns every
-            # device-side error into a client-side timeout. A lone SUCCESS
-            # byte is always the head of a longer reply (success responses
-            # carry the 0xf6 marker and/or a CBOR document), so keep waiting
-            # for those.
+            # A lone error status byte can be a complete repsonse
             if len(buffer) == 1 and buffer[0] >= ThingSetStatus.BAD_REQUEST:
                 return self._parse_binary(buffer[:1]), 1
             return None, 0
